@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+snapshots/
+lab/clab-netops/
+lab/clab-twin/
+lab/twin-configs/
+.pytest_cache/
+*.log
