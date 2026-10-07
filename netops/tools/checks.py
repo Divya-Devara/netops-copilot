@@ -18,17 +18,19 @@ def run_check(c: frr.Check, prefix: str = frr.PREFIX) -> bool:
 
     if c.type == "route_nexthop":
         r = frr.show_json(c.router, f"show ip route {c.target}", prefix=prefix)
-        hops = [h.get("ip") for e in r.get(c.target, []) for h in e.get("nexthops", [])]
+        entries = next((v for k, v in r.items() if k.split("/")[0] == c.target), [])
+        hops = [h.get("ip") for e in entries for h in e.get("nexthops", [])]
         return c.expect in hops
 
     if c.type == "ospf_full":
         n = frr.ospf_neighbors(c.router, prefix=prefix)
-        states = [nbr[0].get("nbrState", "") for nbr in n.get("neighbors", {}).values()
-                  if nbr[0].get("ifaceName", "").split(":")[0] == c.target
-                  or c.target in n.get("neighbors", {})]
-        return any(s.startswith("Full") for s in states) if states else \
-               any(nbrs[0].get("nbrState", "").startswith("Full")
-                   for nid, nbrs in n.get("neighbors", {}).items() if nid == c.target)
+        nbrs = n.get("neighbors", {})
+        if c.target in nbrs:
+            return nbrs[c.target][0].get("nbrState", "").startswith("Full")
+        for nid, entries in nbrs.items():
+            if entries[0].get("ifaceName", "").split(":")[0] == c.target:
+                return entries[0].get("nbrState", "").startswith("Full")
+        return False
 
     if c.type == "bgp_established":
         b = frr.bgp_summary(c.router, prefix=prefix)
