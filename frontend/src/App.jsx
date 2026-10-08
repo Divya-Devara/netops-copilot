@@ -18,7 +18,6 @@ const LINKS = [['r1','r2','ospf'],['r1','r3','ospf'],['r2','r4','ospf'],['r3','r
 const LINK_COLOR = { ospf: '#22d3ee', bgp: '#34d399' }
 const STATUS = { scan: '#22d3ee', plan: '#a78bfa', twin: '#e879f9', apply: '#fbbf24', verify: '#34d399', fail: '#f87171' }
 const FLOOR = -1.7
-// The pipeline shown in the top strip. `gate: true` = one of your 3 safety gates.
 const PIPELINE = [
   { id: 'classify', label: 'Classify' }, { id: 'diagnose', label: 'Diagnose' }, { id: 'plan', label: 'Plan' },
   { id: 'review', label: 'Review', gate: true }, { id: 'policy', label: 'Policy', gate: true }, { id: 'twin', label: 'Twin', gate: true },
@@ -70,7 +69,6 @@ function RouterNode({ id, status, note, selected, onSelect }) {
       <Html position={[0, -0.75, 0]} center distanceFactor={10} zIndexRange={[5, 0]}>
         <div className="node-label" style={{ borderColor: selected ? color : undefined }}><b style={{ color }}>{id}</b><span>AS {r.as}</span></div>
       </Html>
-      {/* floating callout: the agent "talks" from the router it is working on */}
       {note && (
         <Html position={[0, 2.3, 0]} center distanceFactor={10} zIndexRange={[8, 0]}>
           <div className="callout" style={{ color, borderColor: color, boxShadow: `0 0 24px ${color}55` }}>{note}</div>
@@ -100,14 +98,13 @@ function Link({ a, b, kind, active }) {
   )
 }
 
-/* Glides the orbit pivot toward the router the agent is working on, then back to center. */
 function CameraRig({ focus }) {
   const controls = useThree((s) => s.controls)
   const want = useMemo(() => new THREE.Vector3(), [])
   useFrame((_, dt) => {
     if (!controls) return
     want.set(...(focus ? ROUTERS[focus].pos : [0, 0, 0]))
-    controls.target.lerp(want, 1 - Math.pow(0.02, dt))   // frame-rate independent easing
+    controls.target.lerp(want, 1 - Math.pow(0.02, dt))
     controls.autoRotate = !focus
     controls.update()
   })
@@ -174,7 +171,7 @@ function ApprovalModal({ approval, onDecide }) {
         <div className="tag">Human approval required</div>
         <h3>Apply this change to the live lab?</h3>
         <div className="gatesum"><span>✓ Reviewer</span><span>✓ Policy</span><span>✓ Twin</span></div>
-        <p>{approval.plan.rationale}</p>
+        {approval.plan?.rationale && <p>{approval.plan.rationale}</p>}
         <div className="diff">
           {Object.entries(approval.diffs).map(([router, text]) => (
             <div key={router}>
@@ -183,7 +180,7 @@ function ApprovalModal({ approval, onDecide }) {
             </div>
           ))}
         </div>
-        <p>Risk: {approval.plan.risk}</p>
+        {approval.plan?.risk && <p>Risk: {approval.plan.risk}</p>}
         <div className="actions">
           <button className="btn reject" onClick={() => onDecide('reject')}>Reject</button>
           <button className="btn approve" onClick={() => onDecide('approve')}>Approve &amp; apply</button>
@@ -193,74 +190,129 @@ function ApprovalModal({ approval, onDecide }) {
   )
 }
 
-/* ═════════ 4. DEMO PIPELINE (replace with WebSocket events later) ═════════ */
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-const EXAMPLES = ['Set OSPF cost on r1 eth1 to 100', 'Why can r5 not reach r6?', 'Shut down BGP on r5']
-const ALL = Object.keys(ROUTERS)
+/* ═════════ 4. FASTAPI + WEBSOCKET INTEGRATION ═════════ */
+function useNetops(onMessage) {
+  const [connected, setConnected] = useState(false)
+  const ws = useRef(null)
+
+  useEffect(() => {
+    let timeout
+    const connect = () => {
+      const url = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws'
+      ws.current = new WebSocket(url)
+      ws.current.onopen = () => setConnected(true)
+      ws.current.onclose = () => {
+        setConnected(false)
+        timeout = setTimeout(connect, 3000)
+      }
+      ws.current.onmessage = (e) => onMessage(JSON.parse(e.data))
+    }
+    connect()
+    
+    return () => {
+      clearTimeout(timeout)
+      if (ws.current) ws.current.close()
+    }
+  }, [])
+
+  const send = (msg) => {
+    if (ws.current && connected) ws.current.send(JSON.stringify(msg))
+  }
+
+  return { connected, send }
+}
+
+const EXAMPLES = ['Set OSPF cost on r1 eth1 to 100', 'Why can r5 not reach r6?', 'policy: test blocking']
 
 export default function App() {
   const [msgs, setMsgs] = useState([])
   const [intent, setIntent] = useState('')
-  const [phase, setPhase] = useState('idle')          // idle | running | awaiting
-  const [pipe, setPipe] = useState({})                // { classify: 'done', twin: 'running', ... }
-  const [status, setStatus] = useState({})            // { r1: 'twin' }  per-router glow mode
-  const [notes, setNotes] = useState({})              // { r1: 'Twin: testing…' }  3D callouts
-  const [focus, setFocus] = useState(null)            // router the camera glides to
+  const [phase, setPhase] = useState('idle')
+  const [pipe, setPipe] = useState({})                
+  const [status, setStatus] = useState({})            
+  const [notes, setNotes] = useState({})              
+  const [focus, setFocus] = useState(null)            
   const [approval, setApproval] = useState(null)
   const [selected, setSelected] = useState(null)
   const [toast, setToast] = useState(null)
   const [open, setOpen] = useState(false)
-  const decide = useRef(null), feed = useRef(null)
+  
+  // Create ONE thread ID when the app loads so LangGraph remembers the chat history
+  const threadRef = useRef(crypto.randomUUID())
+  const feed = useRef(null)
 
   useEffect(() => { feed.current?.scrollTo({ top: 1e6, behavior: 'smooth' }) }, [msgs, open])
-  useEffect(() => { if (toast) { const t = setTimeout(() => setToast(null), 7000); return () => clearTimeout(t) } }, [toast])
+  
+  // Extend toast duration for answers so you have more time to read, otherwise standard 7s
+  useEffect(() => { 
+    if (toast) { 
+      const duration = toast.tone === 'info' ? 12000 : 7000
+      const t = setTimeout(() => setToast(null), duration)
+      return () => clearTimeout(t) 
+    } 
+  }, [toast])
 
   const say = (role, text, tone = '') => setMsgs((m) => [...m, { role, text, tone }])
   const S = (id, s) => setPipe((p) => ({ ...p, [id]: s }))
   const setRouters = (ids, mode) => setStatus(Object.fromEntries(ids.map((id) => [id, mode])))
   const note = (router, text) => setNotes(router ? { [router]: text } : {})
 
-  // One pipeline stage: mark running, glow routers, show callout, wait, mark done.
-  async function go(id, text, { mode, routers = ALL, callout, at, ms = 1200 }) {
-    S(id, 'running'); say('step', text); setRouters(routers, mode); note(at, callout)
-    await sleep(ms); S(id, 'done')
-  }
-  const finish = (tone, text) => { setToast({ tone, text }); say('agent', text, tone); setStatus({}); setNotes({}); setFocus(null); setPhase('idle') }
-
-  async function runDemo(text) {
-    const t = text.match(/\br([1-6])\b/i)?.[0].toLowerCase() || 'r1'
-    const blocked = ['r5', 'r6'].includes(t) || /delete|no router/i.test(text)
-    setPhase('running'); setPipe({}); setToast(null); say('user', text)
-
-    await go('classify', 'classify: change request', { mode: 'scan', ms: 800 })
-    await go('diagnose', 'diagnoser: reading network state (read-only)', { mode: 'scan', ms: 1300 })
-    setFocus(t)
-    await go('plan', `planner: drafting change for ${t}`, { mode: 'plan', routers: [t], at: t, callout: 'Planner: drafting change…' })
-    await go('review', 'reviewer: critiquing blast radius', { mode: 'plan', routers: [t], at: t, callout: 'Reviewer: checking blast radius…' })
-
-    S('policy', 'running'); say('step', 'policy: scanning commands'); note(t, 'Policy: scanning commands…'); await sleep(1000)
-    if (blocked) {
-      S('policy', 'fail'); setRouters([t], 'fail'); note(t, 'Policy: BLOCKED'); await sleep(2200)
-      return finish('bad', 'Blocked by policy: the change touches an external router or contains a destructive command. Nothing was executed.')
+  const finish = (tone, text) => { 
+    setToast({ tone, text })
+    if (tone === 'info' || tone === 'bad') {
+      say('agent', text, tone)
+      // Automatically open the drawer so the user can easily read long answers
+      setOpen(true)
     }
-    S('policy', 'done')
-    await go('twin', 'twin: cloning lab, applying change, running checks', { mode: 'twin', routers: [t], at: t, callout: 'Twin: testing OSPF adjacency…', ms: 3500 })
-
-    const cost = text.match(/(\d+)\s*$/)?.[1] || '100'
-    setApproval({ plan: { rationale: 'Raise the OSPF cost on this link so traffic prefers the alternate path.', risk: 'low: single interface metric' },
-                  diffs: { [t]: ` interface eth1\n-ip ospf cost 10\n+ip ospf cost ${cost}` } })
-    S('approve', 'wait'); setPhase('awaiting'); setRouters([t], 'plan'); note(t, 'Waiting for your approval')
-    const decision = await new Promise((res) => (decide.current = res))      // ← graph paused in interrupt()
-    setApproval(null)
-    if (decision === 'reject') { S('approve', 'fail'); await sleep(900); return finish('info', 'Change rejected. Network untouched.') }
-    S('approve', 'done'); setPhase('running')
-
-    await go('apply', 'executor: snapshot + apply', { mode: 'apply', routers: [t], at: t, callout: 'Executor: applying config…', ms: 1800 })
-    await go('verify', 'verify: live post-checks', { mode: 'verify', callout: undefined, ms: 2200 })
-    finish('good', `Applied and verified on the live lab: OSPF adjacencies Full, ${t} reachable.`)
+    setStatus({})
+    setNotes({})
+    setFocus(null)
+    setPhase('idle') 
   }
 
-  const submit = (e) => { e.preventDefault(); if (!intent.trim() || phase !== 'idle') return; const x = intent.trim(); setIntent(''); runDemo(x) }
+  const handleMessage = (msg) => {
+    if (msg.type === 'stage') {
+      S(msg.node, msg.status)
+      const r = (msg.routers && msg.routers.length > 0) ? msg.routers[0] : 'r1'
+      setRouters(msg.routers || ['r1'], msg.mode)
+      note(r, msg.detail)
+      setFocus(r)
+      if (msg.status === 'running') say('step', msg.detail)
+    } 
+    else if (msg.type === 'approval_request') {
+      setApproval({ plan: msg.plan, diffs: msg.diffs })
+      S('approve', 'wait')
+      setPhase('awaiting')
+    } 
+    else if (msg.type === 'final') {
+      const toneMap = { applied: 'good', blocked: 'bad', rolled_back: 'bad', error: 'bad', rejected: 'info', answer: 'info' }
+      finish(toneMap[msg.outcome] || 'info', msg.text)
+    }
+  }
+
+  const { connected, send } = useNetops(handleMessage)
+
+  const submit = (e) => { 
+    e.preventDefault()
+    if (!intent.trim() || phase !== 'idle' || !connected) return
+    const x = intent.trim()
+    setIntent('')
+    setPhase('running')
+    setPipe({})
+    setToast(null)
+    say('user', x)
+    
+    // We send the persistent thread ID with every WebSocket intent payload
+    send({ type: 'intent', text: x, thread_id: threadRef.current })
+  }
+
+  const handleDecision = (decision) => {
+    setApproval(null)
+    S('approve', 'done')
+    setPhase('running')
+    send({ type: 'decision', value: decision, thread_id: threadRef.current })
+  }
+
   const info = selected && ROUTERS[selected]
 
   return (
@@ -269,11 +321,16 @@ export default function App() {
 
       <div className="hud-title">
         <h1><span>NetOps</span> Copilot</h1>
-        <p><i className="live-dot" />Live network twin · 6 nodes</p>
+        <p>
+          <i className="live-dot" style={{ background: connected ? '#34d399' : '#f87171', boxShadow: connected ? '0 0 10px #34d399' : 'none' }} />
+          {connected ? 'Live network twin · 6 nodes' : 'Backend Disconnected...'}
+        </p>
       </div>
 
       <PipelineStrip pipe={pipe} />
-      {toast && <div className={`toast glass ${toast.tone}`}>{toast.text}</div>}
+      
+      {/* Added pre-wrap styling here so toast paragraphs format cleanly */}
+      {toast && <div className={`toast glass ${toast.tone}`} style={{ whiteSpace: 'pre-wrap' }}>{toast.text}</div>}
 
       {info && (
         <div className="inspector glass">
@@ -290,25 +347,42 @@ export default function App() {
       <button className="drawer-btn glass" onClick={() => setOpen(!open)}>
         {phase === 'running' && <span className="live" />}Activity <span className="badge">{msgs.length}</span>
       </button>
+      
       <aside className={`drawer glass ${open ? 'open' : ''}`}>
         <h2>Agent activity log</h2>
         <div className="feed" ref={feed}>
           {msgs.length === 0 && <div className="empty">Nothing yet. Run a command below.</div>}
-          {msgs.map((m, i) => <div key={i} className={`msg ${m.role} ${m.tone}`}>{m.text}</div>)}
+          
+          {/* Added pre-wrap styling here so drawer paragraphs format cleanly */}
+          {msgs.map((m, i) => (
+            <div key={i} className={`msg ${m.role} ${m.tone}`} style={{ whiteSpace: 'pre-wrap' }}>
+              {m.text}
+            </div>
+          ))}
         </div>
       </aside>
 
       <div className="dock">
-        {phase === 'idle' && !intent && <div className="suggest">{EXAMPLES.map((x) => <button key={x} onClick={() => setIntent(x)}>{x}</button>)}</div>}
+        {phase === 'idle' && !intent && connected && (
+          <div className="suggest">{EXAMPLES.map((x) => <button key={x} onClick={() => setIntent(x)}>{x}</button>)}</div>
+        )}
         <form className="composer" onSubmit={submit}>
           <span className="prompt">›</span>
-          <input value={intent} onChange={(e) => setIntent(e.target.value)} disabled={phase !== 'idle'}
-            placeholder={phase === 'idle' ? 'Tell the network what to do…  e.g. Set OSPF cost on r1 to 100' : phase === 'awaiting' ? 'Waiting for your approval…' : 'Agent is working…'} />
-          <button disabled={phase !== 'idle' || !intent.trim()}>Execute</button>
+          <input 
+            value={intent} 
+            onChange={(e) => setIntent(e.target.value)} 
+            disabled={phase !== 'idle' || !connected}
+            placeholder={
+              !connected ? 'Connecting to backend...' : 
+              phase === 'idle' ? 'Tell the network what to do…' : 
+              phase === 'awaiting' ? 'Waiting for your approval…' : 'Agent is working…'
+            } 
+          />
+          <button disabled={phase !== 'idle' || !intent.trim() || !connected}>Execute</button>
         </form>
       </div>
 
-      {approval && <ApprovalModal approval={approval} onDecide={(d) => decide.current?.(d)} />}
+      {approval && <ApprovalModal approval={approval} onDecide={handleDecision} />}
     </div>
   )
 }
