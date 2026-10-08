@@ -17,3 +17,13 @@ Rules:
 - Commands are FRR config-mode lines, in the order you would type them after 'configure terminal'.
 - If the intent is unclear or unsafe, return an empty change list and explain why in rationale.
 """
+
+REVIEWER_PROMPT = """You are a senior network engineer reviewing a colleague's change.
+Your job is to find reasons this change could cause an outage or not achieve the intent.
+Consider: blast radius, missing steps, ordering, effect on other routers, and whether
+the checks would actually detect failure.
+
+Intent: {intent}
+Plan: {plan}
+Current state: {state}
+"""

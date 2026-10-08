@@ -1,0 +1,13 @@
+{"type": "policy_check", "intent": "Set ospf cost on r1 eth1 to 100", "allowed": true, "violations": [], "warnings": [], "ts": 1791467640.6295831}
+{"type": "twin_test", "intent": "Set ospf cost on r1 eth1 to 100", "result": {"ok": true, "results": {"ping:r5:6.6.6.6": true, "ping:r1:4.4.4.4": true, "ping:r2:3.3.3.3": true}}, "ts": 1791467717.028828}
+{"type": "approval", "intent": "Set ospf cost on r1 eth1 to 100", "decision": "approve", "ts": 1791467755.8818939}
+{"type": "verify", "intent": "Set ospf cost on r1 eth1 to 100", "result": {"ok": true, "results": {"ping:r5:6.6.6.6": true, "ping:r1:4.4.4.4": true, "ping:r2:3.3.3.3": true}}, "ts": 1791467774.2386577}
+{"type": "policy_check", "intent": "remove OSPF from r2", "allowed": false, "violations": ["r2: 'no router ospf 0' - Removes a whole routing process"], "warnings": [], "ts": 1791468069.558026}
+{"type": "policy_check", "intent": "remove OSPF from r2", "allowed": false, "violations": ["r2: 'no router ospf 0 interface eth1' - Removes a whole routing process", "r2: 'no router ospf 0 interface eth2' - Removes a whole routing process"], "warnings": [], "ts": 1791468088.4711125}
+{"type": "policy_check", "intent": "Remove OSPF from r2", "allowed": false, "violations": ["r2: 'no router ospf 0' - Removes a whole routing process"], "warnings": [], "ts": 1791468244.3575785}
+{"type": "policy_check", "intent": "Remove OSPF from r2", "allowed": false, "violations": ["r2: 'no router ospf 0 interface eth1' - Removes a whole routing process", "r2: 'no router ospf 0 interface eth2' - Removes a whole routing process"], "warnings": [], "ts": 1791468263.1267622}
+{"type": "policy_check", "intent": "Set ospf cost on r1 eth2 to 75", "allowed": true, "violations": [], "warnings": [], "ts": 1791468282.3034325}
+{"type": "twin_test", "intent": "Set ospf cost on r1 eth2 to 75", "result": {"ok": true, "results": {}}, "ts": 1791468282.3045805}
+{"type": "approval", "intent": "Set ospf cost on r1 eth2 to 75", "decision": "approve", "ts": 1791468282.3070867}
+{"type": "verify", "intent": "Set ospf cost on r1 eth2 to 75", "result": {"ok": false, "results": {"ping:r5:6.6.6.6": false}}, "ts": 1791468297.4550748}
+{"type": "rollback", "intent": "Set ospf cost on r1 eth2 to 75", "routers": ["r1"], "ts": 1791468297.8387237}
