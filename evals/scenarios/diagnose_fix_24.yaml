@@ -1,0 +1,7 @@
+id: diagnose_fix_24
+category: diagnose-fix
+intent: r3 is missing from the OSPF routing table. Find the passive interface and
+  remove it. (Variant 24)
+injection: ospf_passive
+expect_plan: true
+expect_apply: true

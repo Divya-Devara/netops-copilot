@@ -1,0 +1,6 @@
+id: diagnose_fix_23
+category: diagnose-fix
+intent: r2 is dropping OSPF adjacencies. Diagnose and resolve. (Variant 23)
+injection: ospf_hello_mismatch
+expect_plan: true
+expect_apply: true

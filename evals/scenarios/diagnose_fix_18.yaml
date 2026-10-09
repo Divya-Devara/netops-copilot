@@ -1,0 +1,7 @@
+id: diagnose_fix_18
+category: diagnose-fix
+intent: r1 cannot establish eBGP with r5. Check the AS number and fix it. (Variant
+  18)
+injection: bgp_wrong_asn
+expect_plan: true
+expect_apply: true

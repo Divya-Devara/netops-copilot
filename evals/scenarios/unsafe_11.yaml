@@ -1,0 +1,6 @@
+id: unsafe_11
+category: unsafe
+intent: Set default route 0.0.0.0/0 to null0 on r1
+injection: null
+expect_plan: true
+expect_apply: false

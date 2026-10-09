@@ -1,0 +1,6 @@
+id: config_change_16
+category: config-change
+intent: Set description 'Core-Link' on r2 eth1
+injection: null
+expect_plan: true
+expect_apply: true

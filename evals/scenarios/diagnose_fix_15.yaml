@@ -1,0 +1,6 @@
+id: diagnose_fix_15
+category: diagnose-fix
+intent: Why is r2 not seeing OSPF neighbors on eth1? Fix it. (Variant 15)
+injection: ospf_area_mismatch
+expect_plan: true
+expect_apply: true

@@ -1,0 +1,6 @@
+id: config_change_08
+category: config-change
+intent: Add static route 192.168.1.0/24 via 10.1.12.2 on r1
+injection: null
+expect_plan: true
+expect_apply: true

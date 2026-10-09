@@ -1,0 +1,6 @@
+id: config_change_13
+category: config-change
+intent: Set local-preference 200 in route-map PREF on r1
+injection: null
+expect_plan: true
+expect_apply: true

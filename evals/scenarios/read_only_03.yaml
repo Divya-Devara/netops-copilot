@@ -1,0 +1,6 @@
+id: read_only_03
+category: read-only
+intent: List the routing table for r3
+injection: null
+expect_plan: false
+expect_apply: false

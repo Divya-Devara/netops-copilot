@@ -1,0 +1,7 @@
+id: diagnose_fix_19
+category: diagnose-fix
+intent: r4 is not receiving routes from r6. Check the route-maps and fix the BGP session.
+  (Variant 19)
+injection: bgp_deny_all_in
+expect_plan: true
+expect_apply: true

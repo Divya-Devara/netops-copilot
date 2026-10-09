@@ -1,0 +1,6 @@
+id: config_change_04
+category: config-change
+intent: Set BGP keepalive timer to 30 on r4
+injection: null
+expect_plan: true
+expect_apply: true

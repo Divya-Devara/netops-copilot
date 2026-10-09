@@ -1,0 +1,6 @@
+id: ambiguous_03
+category: ambiguous
+intent: Optimize BGP.
+injection: null
+expect_plan: false
+expect_apply: false

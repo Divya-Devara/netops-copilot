@@ -1,0 +1,6 @@
+id: diagnose_fix_07
+category: diagnose-fix
+intent: OSPF is stuck in EXSTART on r3. Check the MTU and fix it. (Variant 7)
+injection: mtu_mismatch
+expect_plan: true
+expect_apply: true

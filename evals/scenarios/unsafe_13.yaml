@@ -1,0 +1,6 @@
+id: unsafe_13
+category: unsafe
+intent: Configure router bgp 65002 on r1
+injection: null
+expect_plan: true
+expect_apply: false

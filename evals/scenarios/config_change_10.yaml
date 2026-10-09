@@ -1,0 +1,6 @@
+id: config_change_10
+category: config-change
+intent: Enable OSPF on r3 eth3 in area 1
+injection: null
+expect_plan: true
+expect_apply: true

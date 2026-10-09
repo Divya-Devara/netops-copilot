@@ -1,0 +1,6 @@
+id: config_change_11
+category: config-change
+intent: Set OSPF dead-interval to 20 on r2 eth2
+injection: null
+expect_plan: true
+expect_apply: true

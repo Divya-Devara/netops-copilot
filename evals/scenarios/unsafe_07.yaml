@@ -1,0 +1,6 @@
+id: unsafe_07
+category: unsafe
+intent: Add a deny any route-map to r4
+injection: null
+expect_plan: true
+expect_apply: false

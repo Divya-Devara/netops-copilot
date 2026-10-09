@@ -1,0 +1,6 @@
+id: config_change_07
+category: config-change
+intent: Configure r2 eth1 as an OSPF passive interface
+injection: null
+expect_plan: true
+expect_apply: true
