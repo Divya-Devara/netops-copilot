@@ -1,0 +1,6 @@
+id: read_only_04
+category: read-only
+intent: Is r2 in OSPF area 0?
+injection: null
+expect_plan: false
+expect_apply: false

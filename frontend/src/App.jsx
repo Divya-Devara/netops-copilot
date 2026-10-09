@@ -4,6 +4,9 @@ import { OrbitControls, Html, Line, Grid, Sparkles, Stars, Float, RoundedBox, Ed
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing'
 import * as THREE from 'three'
 import './index.css'
+import './chat.css'
+import { LandingHero, ChatPanel, ChatPill } from './ChatUI'
+import GateDetails from './GateDetails'
 
 /* ═════════ 1. DATA ═════════ */
 const ROUTERS = {
@@ -20,7 +23,7 @@ const STATUS = { scan: '#22d3ee', plan: '#a78bfa', twin: '#e879f9', apply: '#fbb
 const FLOOR = -1.7
 const PIPELINE = [
   { id: 'classify', label: 'Classify' }, { id: 'diagnose', label: 'Diagnose' }, { id: 'plan', label: 'Plan' },
-  { id: 'review', label: 'Review', gate: true }, { id: 'policy', label: 'Policy', gate: true }, { id: 'twin', label: 'Twin', gate: true },
+  { id: 'policy', label: 'Policy', gate: true }, { id: 'review', label: 'Review', gate: true }, { id: 'twin', label: 'Twin', gate: true },
   { id: 'approve', label: 'Approve' }, { id: 'apply', label: 'Apply' }, { id: 'verify', label: 'Verify' },
 ]
 
@@ -98,12 +101,13 @@ function Link({ a, b, kind, active }) {
   )
 }
 
-function CameraRig({ focus }) {
+function CameraRig({ focus, lift = 0 }) {
   const controls = useThree((s) => s.controls)
   const want = useMemo(() => new THREE.Vector3(), [])
   useFrame((_, dt) => {
     if (!controls) return
     want.set(...(focus ? ROUTERS[focus].pos : [0, 0, 0]))
+    want.y -= lift
     controls.target.lerp(want, 1 - Math.pow(0.02, dt))
     controls.autoRotate = !focus
     controls.update()
@@ -126,7 +130,7 @@ function Topology({ status, notes, selected, onSelect }) {
   )
 }
 
-function Scene({ status, notes, focus, selected, onSelect }) {
+function Scene({ status, notes, focus, selected, onSelect, lift }) {
   return (
     <Canvas camera={{ position: [0, 7.5, 13.5], fov: 45 }} dpr={[1, 2]} onPointerMissed={() => onSelect(null)}>
       <color attach="background" args={['#05070d']} />
@@ -145,10 +149,11 @@ function Scene({ status, notes, focus, selected, onSelect }) {
       </EffectComposer>
       <OrbitControls makeDefault enableDamping dampingFactor={0.06} autoRotate autoRotateSpeed={0.35}
         minDistance={6} maxDistance={26} maxPolarAngle={Math.PI / 2.15} />
-      <CameraRig focus={focus} />
+      <CameraRig focus={focus} lift={lift} />
     </Canvas>
   )
 }
+
 
 /* ═════════ 3. 2D UI ═════════ */
 function PipelineStrip({ pipe }) {
@@ -170,7 +175,7 @@ function ApprovalModal({ approval, onDecide }) {
       <div className="modal glass">
         <div className="tag">Human approval required</div>
         <h3>Apply this change to the live lab?</h3>
-        <div className="gatesum"><span>✓ Reviewer</span><span>✓ Policy</span><span>✓ Twin</span></div>
+        <GateDetails review={approval.review} policy={approval.policy} twin={approval.twin} />
         {approval.plan?.rationale && <p>{approval.plan.rationale}</p>}
         <div className="diff">
           {Object.entries(approval.diffs).map(([router, text]) => (
@@ -194,96 +199,169 @@ function ApprovalModal({ approval, onDecide }) {
 function useNetops(onMessage) {
   const [connected, setConnected] = useState(false)
   const ws = useRef(null)
+  // Always call the latest handler (the old version captured the first render's closure)
+  const handler = useRef(onMessage)
+  handler.current = onMessage
 
   useEffect(() => {
     let timeout
+    let closed = false
     const connect = () => {
       const url = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws'
       ws.current = new WebSocket(url)
       ws.current.onopen = () => setConnected(true)
       ws.current.onclose = () => {
         setConnected(false)
-        timeout = setTimeout(connect, 3000)
+        if (!closed) timeout = setTimeout(connect, 3000)
       }
-      ws.current.onmessage = (e) => onMessage(JSON.parse(e.data))
+      ws.current.onmessage = (e) => handler.current(JSON.parse(e.data))
     }
     connect()
-    
     return () => {
+      closed = true
       clearTimeout(timeout)
-      if (ws.current) ws.current.close()
+      ws.current?.close()
     }
   }, [])
 
   const send = (msg) => {
-    if (ws.current && connected) ws.current.send(JSON.stringify(msg))
+    if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify(msg))
   }
-
   return { connected, send }
 }
 
-const EXAMPLES = ['Set OSPF cost on r1 eth1 to 100', 'Why can r5 not reach r6?', 'policy: test blocking']
+/* ───── session persistence (sessionStorage: survives refresh, cleared when the tab closes) ───── */
+const SESSION_KEY = 'netops.session.v1'
+const uid = () => Math.random().toString(36).slice(2, 10)
+
+function loadSession() {
+  try {
+    const s = JSON.parse(sessionStorage.getItem(SESSION_KEY))
+    if (s?.threadId) {
+      s.msgs = (s.msgs || []).map((m) => {
+        // A pending approval can't be resumed after a reload -> mark it expired so it is never clickable
+        if (m.streaming) return { ...m, streaming: false }
+        if (m.role === 'approval' && m.state === 'pending') return { ...m, state: 'expired' }
+        // Pipeline steps that were mid-flight when the page closed
+        if (m.role === 'run') {
+          const steps = Object.fromEntries(
+            Object.entries(m.steps || {}).map(([k, v]) => [k, v === 'running' || v === 'wait' ? 'stopped' : v])
+          )
+          return { ...m, steps }
+        }
+        return m
+      })
+      return s
+    }
+  } catch { /* ignore corrupt storage */ }
+  return { threadId: crypto.randomUUID(), bootId: null, msgs: [], view: 'landing' }
+}
 
 export default function App() {
-  const [msgs, setMsgs] = useState([])
+  const initial = useRef(null)
+  if (!initial.current) initial.current = loadSession()
+
+  // ── persisted session state ──
+  const [threadId, setThreadId] = useState(initial.current.threadId)
+  const [bootId, setBootId] = useState(initial.current.bootId)
+  const bootRef = useRef(initial.current.bootId)  // sync copy so duplicate 'hello's can't both see a stale id
+  const [msgs, setMsgs] = useState(initial.current.msgs)
+  const [view, setView] = useState(initial.current.view)   // 'landing' | 'chat' | 'minimized'
+
+  // ── live (non-persisted) state ──
   const [intent, setIntent] = useState('')
-  const [phase, setPhase] = useState('idle')
-  const [pipe, setPipe] = useState({})                
-  const [status, setStatus] = useState({})            
-  const [notes, setNotes] = useState({})              
-  const [focus, setFocus] = useState(null)            
+  const [phase, setPhase] = useState('idle')               // idle | running | awaiting
+  const [pipe, setPipe] = useState({})
+  const [status, setStatus] = useState({})
+  const [notes, setNotes] = useState({})
+  const [focus, setFocus] = useState(null)
   const [approval, setApproval] = useState(null)
   const [selected, setSelected] = useState(null)
   const [toast, setToast] = useState(null)
-  const [open, setOpen] = useState(false)
-  
-  // Create ONE thread ID when the app loads so LangGraph remembers the chat history
-  const threadRef = useRef(crypto.randomUUID())
-  const feed = useRef(null)
+  const [unread, setUnread] = useState(0)
 
-  useEffect(() => { feed.current?.scrollTo({ top: 1e6, behavior: 'smooth' }) }, [msgs, open])
-  
-  // Extend toast duration for answers so you have more time to read, otherwise standard 7s
-  useEffect(() => { 
-    if (toast) { 
-      const duration = toast.tone === 'info' ? 12000 : 7000
-      const t = setTimeout(() => setToast(null), duration)
-      return () => clearTimeout(t) 
-    } 
+  useEffect(() => {
+    try { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ threadId, bootId, msgs, view })) } catch { /* quota */ }
+  }, [threadId, bootId, msgs, view])
+
+  // Toast is only for when the chat is minimized (otherwise the answer is already in the chat)
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), toast.tone === 'info' ? 12000 : 7000)
+    return () => clearTimeout(t)
   }, [toast])
 
-  const say = (role, text, tone = '') => setMsgs((m) => [...m, { role, text, tone }])
+  // Esc minimizes the chat (but never while an approval is open)
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape' && view === 'chat' && !approval) setView('minimized') }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [view, approval])
+
+  // ── helpers ──
+  const push = (m) => setMsgs((ms) => [...ms, { id: uid(), ts: Date.now(), ...m }])
+  const updateRun = (fn) => setMsgs((ms) => {
+    let idx = -1
+    for (let i = ms.length - 1; i >= 0; i--) if (ms[i].role === 'run') { idx = i; break }
+    if (idx < 0) return ms
+    return ms.map((m, i) => (i === idx ? { ...m, steps: fn(m.steps || {}) } : m))
+  })
   const S = (id, s) => setPipe((p) => ({ ...p, [id]: s }))
   const setRouters = (ids, mode) => setStatus(Object.fromEntries(ids.map((id) => [id, mode])))
   const note = (router, text) => setNotes(router ? { [router]: text } : {})
 
-  const finish = (tone, text) => { 
-    setToast({ tone, text })
-    if (tone === 'info' || tone === 'bad') {
-      say('agent', text, tone)
-      // Automatically open the drawer so the user can easily read long answers
-      setOpen(true)
-    }
-    setStatus({})
-    setNotes({})
-    setFocus(null)
-    setPhase('idle') 
-  }
+  const finish = (tone, text) => {
+  // If the answer was streamed token by token, finalize that bubble instead of adding a duplicate
+  setMsgs((ms) => {
+    const last = ms[ms.length - 1]
+    if (last && last.role === 'agent' && last.streaming) return [...ms.slice(0, -1), { ...last, text, tone, streaming: false }]
+    return [...ms, { id: uid(), ts: Date.now(), role: 'agent', text, tone }]
+  })
+  if (view === 'minimized') { setToast({ tone, text }); setUnread((u) => u + 1) }
+
+    // Close out any step still marked running/waiting when the run ends
+  const closeOut = (obj, to) =>
+    Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, v === 'running' || v === 'wait' ? to : v]))
+  updateRun((steps) => closeOut(steps, tone === 'bad' ? 'stopped' : 'done'))
+  if (tone !== 'bad') setPipe((p) => closeOut(p, 'done'))
+
+  setStatus({}); setNotes({}); setFocus(null); setPhase('idle')
+}
 
   const handleMessage = (msg) => {
-    if (msg.type === 'stage') {
+    if (msg.type === 'hello') {
+      // Backend restarted -> in-memory LangGraph checkpoints are gone even though the UI still shows history
+      const prev = bootRef.current
+      bootRef.current = msg.boot_id
+      if (prev && prev !== msg.boot_id && msgs.length > 0) {
+        push({ role: 'system', text: 'The backend restarted, so the agent no longer remembers earlier messages. The history above is for reference only.' })
+        setPhase('idle'); setApproval(null)
+      }
+      setBootId(msg.boot_id)
+    }
+    else if (msg.type === 'token') {
+      setMsgs((ms) => {
+        const last = ms[ms.length - 1]
+        if (last && last.role === 'agent' && last.streaming) return [...ms.slice(0, -1), { ...last, text: last.text + msg.text }]
+        return [...ms, { id: uid(), ts: Date.now(), role: 'agent', tone: 'info', streaming: true, text: msg.text }]
+      })
+    }
+    else if (msg.type === 'stage') {
       S(msg.node, msg.status)
-      const r = (msg.routers && msg.routers.length > 0) ? msg.routers[0] : 'r1'
+      updateRun((steps) => ({ ...steps, [msg.node]: msg.status }))
+      const r = msg.routers && msg.routers.length > 0 ? msg.routers[0] : 'r1'
       setRouters(msg.routers || ['r1'], msg.mode)
       note(r, msg.detail)
       setFocus(r)
-      if (msg.status === 'running') say('step', msg.detail)
-    } 
+    }
     else if (msg.type === 'approval_request') {
-      setApproval({ plan: msg.plan, diffs: msg.diffs })
+      setApproval({ plan: msg.plan, diffs: msg.diffs, review: msg.review, policy: msg.policy, twin: msg.twin })
       S('approve', 'wait')
+      updateRun((steps) => ({ ...steps, approve: 'wait' }))
+      push({ role: 'approval', plan: msg.plan, diffs: msg.diffs, review: msg.review, policy: msg.policy, twin: msg.twin, state: 'pending' })
       setPhase('awaiting')
-    } 
+      if (view === 'minimized') setUnread((u) => u + 1)
+    }
     else if (msg.type === 'final') {
       const toneMap = { applied: 'good', blocked: 'bad', rolled_back: 'bad', error: 'bad', rejected: 'info', answer: 'info' }
       finish(toneMap[msg.outcome] || 'info', msg.text)
@@ -292,32 +370,45 @@ export default function App() {
 
   const { connected, send } = useNetops(handleMessage)
 
-  const submit = (e) => { 
-    e.preventDefault()
-    if (!intent.trim() || phase !== 'idle' || !connected) return
-    const x = intent.trim()
+  const submit = (text) => {
+    const x = (typeof text === 'string' ? text : intent).trim()
+    if (!x || phase !== 'idle' || !connected) return
     setIntent('')
     setPhase('running')
     setPipe({})
     setToast(null)
-    say('user', x)
-    
-    // We send the persistent thread ID with every WebSocket intent payload
-    send({ type: 'intent', text: x, thread_id: threadRef.current })
+    push({ role: 'user', text: x })
+    push({ role: 'run', steps: {} })
+    setView('chat')
+    setUnread(0)
+    send({ type: 'intent', text: x, thread_id: threadId })
   }
 
   const handleDecision = (decision) => {
     setApproval(null)
     S('approve', 'done')
+    updateRun((steps) => ({ ...steps, approve: 'done' }))
+    setMsgs((ms) => ms.map((m) =>
+      m.role === 'approval' && m.state === 'pending'
+        ? { ...m, state: decision === 'approve' ? 'approved' : 'rejected', decidedAt: Date.now() }
+        : m
+    ))
     setPhase('running')
-    send({ type: 'decision', value: decision, thread_id: threadRef.current })
+    send({ type: 'decision', value: decision, thread_id: threadId })
   }
 
+  const newSession = () => {
+    setThreadId(crypto.randomUUID())
+    setMsgs([]); setApproval(null); setPhase('idle'); setPipe({}); setStatus({}); setNotes({})
+    setFocus(null); setToast(null); setUnread(0); setIntent(''); setView('landing')
+  }
+
+  const openChat = () => { setView('chat'); setUnread(0) }
   const info = selected && ROUTERS[selected]
 
   return (
-    <div className="stage">
-      <Scene status={status} notes={notes} focus={focus} selected={selected} onSelect={setSelected} />
+  <div className="stage">
+    <Scene status={status} notes={notes} focus={focus} selected={selected} onSelect={setSelected} lift={view === 'landing' ? 2.4 : 0.6} />
 
       <div className="hud-title">
         <h1><span>NetOps</span> Copilot</h1>
@@ -328,14 +419,18 @@ export default function App() {
       </div>
 
       <PipelineStrip pipe={pipe} />
-      
-      {/* Added pre-wrap styling here so toast paragraphs format cleanly */}
-      {toast && <div className={`toast glass ${toast.tone}`} style={{ whiteSpace: 'pre-wrap' }}>{toast.text}</div>}
+
+      {toast && view === 'minimized' && (
+        <div className={`toast glass ${toast.tone}`} style={{ whiteSpace: 'pre-wrap' }}>{toast.text}</div>
+      )}
 
       {info && (
         <div className="inspector glass">
           <h3 style={{ color: info.color }}>{selected}</h3>
           <dl><dt>Role</dt><dd>{info.role}</dd><dt>AS</dt><dd>{info.as}</dd><dt>Loopback</dt><dd>{info.lo}</dd><dt>State</dt><dd>{status[selected] || 'idle'}</dd></dl>
+          <button className="ask-btn" onClick={() => { setIntent(`What is the current state of ${selected}?`); openChat() }}>
+            Ask about {selected}
+          </button>
         </div>
       )}
 
@@ -344,43 +439,21 @@ export default function App() {
         <span className="chip"><i style={{ background: '#34d399' }} />eBGP peering</span>
       </div>
 
-      <button className="drawer-btn glass" onClick={() => setOpen(!open)}>
-        {phase === 'running' && <span className="live" />}Activity <span className="badge">{msgs.length}</span>
-      </button>
-      
-      <aside className={`drawer glass ${open ? 'open' : ''}`}>
-        <h2>Agent activity log</h2>
-        <div className="feed" ref={feed}>
-          {msgs.length === 0 && <div className="empty">Nothing yet. Run a command below.</div>}
-          
-          {/* Added pre-wrap styling here so drawer paragraphs format cleanly */}
-          {msgs.map((m, i) => (
-            <div key={i} className={`msg ${m.role} ${m.tone}`} style={{ whiteSpace: 'pre-wrap' }}>
-              {m.text}
-            </div>
-          ))}
-        </div>
-      </aside>
+      {view === 'landing' && (
+        <LandingHero intent={intent} setIntent={setIntent} onSubmit={submit} phase={phase} connected={connected} />
+      )}
 
-      <div className="dock">
-        {phase === 'idle' && !intent && connected && (
-          <div className="suggest">{EXAMPLES.map((x) => <button key={x} onClick={() => setIntent(x)}>{x}</button>)}</div>
-        )}
-        <form className="composer" onSubmit={submit}>
-          <span className="prompt">›</span>
-          <input 
-            value={intent} 
-            onChange={(e) => setIntent(e.target.value)} 
-            disabled={phase !== 'idle' || !connected}
-            placeholder={
-              !connected ? 'Connecting to backend...' : 
-              phase === 'idle' ? 'Tell the network what to do…' : 
-              phase === 'awaiting' ? 'Waiting for your approval…' : 'Agent is working…'
-            } 
-          />
-          <button disabled={phase !== 'idle' || !intent.trim() || !connected}>Execute</button>
-        </form>
-      </div>
+      {view === 'chat' && (
+        <ChatPanel
+          msgs={msgs} pipeline={PIPELINE} phase={phase} connected={connected}
+          intent={intent} setIntent={setIntent} onSubmit={submit}
+          onMinimize={() => setView('minimized')} onNewSession={newSession}
+        />
+      )}
+
+      {view === 'minimized' && (
+        <ChatPill onClick={openChat} unread={unread} phase={phase} count={msgs.filter((m) => m.role === 'user' || m.role === 'agent').length} />
+      )}
 
       {approval && <ApprovalModal approval={approval} onDecide={handleDecision} />}
     </div>

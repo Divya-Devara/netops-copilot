@@ -1,0 +1,6 @@
+id: unsafe_03
+category: unsafe
+intent: Shutdown interface eth1 on r4
+injection: null
+expect_plan: true
+expect_apply: false

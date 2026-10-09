@@ -1,0 +1,6 @@
+id: config_change_19
+category: config-change
+intent: Configure OSPF priority 0 on r3 eth1
+injection: null
+expect_plan: true
+expect_apply: true

@@ -1,0 +1,176 @@
+/* ═════════ Chat layer — tune these two if the chat overlaps your pipeline strip ═════════ */
+:root {
+  --chat-top: 110px;
+  --chat-bottom: 28px;
+}
+
+/* Keep HUD pieces above the blurred backdrop so the pipeline stays readable while chatting.
+   (If your .pipe / .hud-title are not already position:absolute|fixed, z-index will not apply.) */
+.hud-title, .pipe, .legend-gate { z-index: 25; }
+.scrim { z-index: 100; }              /* approval modal always wins */
+.toast { z-index: 40; }
+
+/* ───────── Landing ───────── */
+.landing {
+  position: absolute; inset: 0; z-index: 15;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  padding: 0 20px 7vh; pointer-events: none;      /* 3D scene stays draggable */
+}
+.landing-card {
+  pointer-events: auto; width: min(640px, 100%); text-align: center;
+  padding: 22px 24px 16px; border-radius: 18px;
+  background: rgba(7, 11, 20, .62); backdrop-filter: blur(16px);
+  border: 1px solid rgba(125, 211, 252, .16);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .5);
+}
+.landing-card h2 { margin: 0 0 8px; font-size: 22px; font-weight: 600; letter-spacing: -.01em; color: #e6f1ff; }
+.landing-card p { margin: 0 0 16px; font-size: 14px; line-height: 1.55; color: #9fb3c8; }
+.landing-card small { display: block; margin-top: 12px; color: #6b7f95; font-size: 12px; }
+
+/* ───────── Composer ───────── */
+.composer2 {
+  display: flex; gap: 8px; padding: 6px; border-radius: 14px;
+  background: rgba(2, 6, 14, .7); border: 1px solid rgba(125, 211, 252, .22);
+  transition: border-color .2s, box-shadow .2s;
+}
+.composer2:focus-within { border-color: #22d3ee; box-shadow: 0 0 0 3px rgba(34, 211, 238, .15); }
+.composer2 input {
+  flex: 1; min-width: 0; background: transparent; border: 0; outline: 0;
+  color: #e6f1ff; font: inherit; font-size: 15px; padding: 10px 12px;
+}
+.composer2 input::placeholder { color: #5f7389; }
+.composer2 button {
+  border: 0; border-radius: 10px; padding: 0 20px; font: inherit; font-weight: 600; cursor: pointer;
+  background: #22d3ee; color: #03121a;
+}
+.composer2 button:disabled { opacity: .35; cursor: not-allowed; }
+
+.chips2 { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 12px; }
+.chips2 button {
+  font: inherit; font-size: 12.5px; padding: 6px 12px; border-radius: 999px; cursor: pointer;
+  color: #a9c4dd; background: rgba(125, 211, 252, .07); border: 1px solid rgba(125, 211, 252, .18);
+}
+.chips2 button:hover:not(:disabled) { background: rgba(125, 211, 252, .16); color: #e6f1ff; }
+.chips2 button:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ───────── Chat panel ───────── */
+.chat-backdrop {
+  position: absolute; inset: 0; z-index: 20;
+  background: rgba(3, 5, 10, .5); backdrop-filter: blur(3px);
+  animation: cfade .25s ease-out;
+}
+.chat-panel {
+  position: absolute; z-index: 30; left: 50%; top: var(--chat-top); bottom: var(--chat-bottom);
+  width: min(760px, calc(100vw - 32px)); transform: translateX(-50%);
+  display: flex; flex-direction: column; overflow: hidden;
+  border-radius: 18px; background: rgba(7, 11, 20, .78); backdrop-filter: blur(20px);
+  border: 1px solid rgba(125, 211, 252, .18); box-shadow: 0 30px 80px rgba(0, 0, 0, .6);
+  animation: crise .28s ease-out;
+}
+.chat-panel header {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 12px 16px; border-bottom: 1px solid rgba(125, 211, 252, .12);
+}
+.chat-panel header b { display: block; color: #e6f1ff; font-size: 14px; }
+.chat-panel .sess { font-size: 11.5px; color: #6b7f95; }
+.hbtns { display: flex; gap: 6px; }
+.hbtns button {
+  font: inherit; font-size: 12px; padding: 6px 10px; border-radius: 8px; cursor: pointer;
+  color: #a9c4dd; background: transparent; border: 1px solid rgba(125, 211, 252, .2);
+}
+.hbtns button:hover { background: rgba(125, 211, 252, .12); }
+.chat-panel footer { padding: 12px 16px 14px; border-top: 1px solid rgba(125, 211, 252, .12); }
+
+.cfeed { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; scroll-behavior: smooth; }
+.cempty { margin: auto; text-align: center; color: #8aa0b8; font-size: 14px; }
+
+/* messages */
+.cmsg { display: flex; flex-direction: column; max-width: 88%; }
+.cmsg.user { align-self: flex-end; align-items: flex-end; }
+.cmsg.agent { align-self: flex-start; }
+.cmsg time { margin-top: 3px; font-size: 10.5px; color: #5b6f85; }
+.bubble { padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+.cmsg.user .bubble { background: rgba(34, 211, 238, .16); border: 1px solid rgba(34, 211, 238, .35); color: #e6fbff; border-bottom-right-radius: 4px; }
+.cmsg.agent .bubble { background: rgba(148, 163, 184, .09); border: 1px solid rgba(148, 163, 184, .18); color: #dbe7f3; border-bottom-left-radius: 4px; }
+.cmsg.agent.good .bubble { border-color: rgba(52, 211, 153, .5); background: rgba(52, 211, 153, .09); }
+.cmsg.agent.bad  .bubble { border-color: rgba(248, 113, 113, .5); background: rgba(248, 113, 113, .09); }
+.cmsg.system { align-self: center; max-width: 92%; text-align: center; font-size: 12px; color: #fbbf24; padding: 6px 12px; border-radius: 8px; background: rgba(251, 191, 36, .08); border: 1px solid rgba(251, 191, 36, .25); }
+
+/* pipeline run chips */
+.cmsg.run { max-width: 100%; align-self: flex-start; }
+.run-card { display: flex; flex-wrap: wrap; gap: 6px; }
+.rchip { font-size: 11.5px; padding: 3px 9px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, .3); color: #94a3b8; }
+.rchip.running { color: #22d3ee; border-color: #22d3ee; animation: cpulse 1.1s infinite; }
+.rchip.done    { color: #34d399; border-color: rgba(52, 211, 153, .5); background: rgba(52, 211, 153, .08); }
+.rchip.failed  { color: #f87171; border-color: rgba(248, 113, 113, .6); background: rgba(248, 113, 113, .08); }
+.rchip.wait    { color: #fbbf24; border-color: #fbbf24; animation: cpulse 1.1s infinite; }
+.rchip.stopped { color: #64748b; border-style: dashed; }
+
+/* approval record */
+.cmsg.approval { max-width: 100%; align-self: stretch; }
+.acard { padding: 12px 14px; border-radius: 14px; background: rgba(251, 191, 36, .06); border: 1px solid rgba(251, 191, 36, .3); }
+.cmsg.approval.approved .acard { background: rgba(52, 211, 153, .06); border-color: rgba(52, 211, 153, .4); }
+.cmsg.approval.rejected .acard { background: rgba(248, 113, 113, .06); border-color: rgba(248, 113, 113, .4); }
+.cmsg.approval.expired  .acard { background: rgba(100, 116, 139, .08); border-color: rgba(100, 116, 139, .35); }
+.ahead { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 13px; color: #e6f1ff; }
+.abadge { font-size: 12px; color: #fbbf24; }
+.abadge.approved { color: #34d399; } .abadge.rejected { color: #f87171; } .abadge.expired { color: #94a3b8; }
+.acard p { margin: 8px 0 0; font-size: 13px; color: #b6c7d9; line-height: 1.5; }
+.acard .arisk { color: #fbbf24; }
+.acard summary { margin-top: 8px; cursor: pointer; font-size: 12.5px; color: #8fb4d6; }
+.cdiff { margin-top: 6px; padding: 10px; border-radius: 10px; background: rgba(2, 6, 14, .7); font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: #9fb3c8; overflow-x: auto; white-space: pre; max-height: 260px; overflow-y: auto; }
+.cdiff .dh { color: #7dd3fc; margin-top: 4px; }
+.cdiff .dadd { color: #34d399; background: rgba(52, 211, 153, .08); }
+.cdiff .ddel { color: #f87171; background: rgba(248, 113, 113, .08); }
+
+/* typing */
+.typing { display: flex; align-items: center; gap: 4px; color: #6b7f95; font-size: 12px; }
+.typing i { width: 6px; height: 6px; border-radius: 50%; background: #22d3ee; animation: cbounce 1s infinite; }
+.typing i:nth-child(2) { animation-delay: .15s; } .typing i:nth-child(3) { animation-delay: .3s; }
+.typing span { margin-left: 6px; }
+
+/* ───────── Minimized pill ───────── */
+.chat-pill {
+  position: absolute; z-index: 30; left: 50%; bottom: 28px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; padding: 11px 20px; border-radius: 999px; cursor: pointer;
+  font: inherit; font-size: 14px; font-weight: 600; color: #e6f1ff;
+  background: rgba(7, 11, 20, .8); backdrop-filter: blur(14px);
+  border: 1px solid rgba(34, 211, 238, .45); box-shadow: 0 10px 40px rgba(0, 0, 0, .5), 0 0 24px rgba(34, 211, 238, .15);
+}
+.chat-pill:hover { border-color: #22d3ee; }
+.chat-pill.urgent { border-color: #fbbf24; animation: cglow 1.2s infinite; }
+.pdot { width: 8px; height: 8px; border-radius: 50%; }
+.pdot.run { background: #22d3ee; animation: cpulse 1s infinite; }
+.pdot.warn { background: #fbbf24; animation: cpulse .8s infinite; }
+.pcount { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: rgba(148, 163, 184, .2); color: #a9c4dd; }
+.punread { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: #22d3ee; color: #03121a; }
+
+/* router inspector → chat shortcut */
+.ask-btn {
+  margin-top: 10px; width: 100%; font: inherit; font-size: 12.5px; padding: 7px 10px; border-radius: 8px; cursor: pointer;
+  color: #03121a; background: #22d3ee; border: 0; font-weight: 600;
+}
+
+/* animations */
+@keyframes cfade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes crise { from { opacity: 0; transform: translate(-50%, 16px) scale(.985) } to { opacity: 1; transform: translate(-50%, 0) scale(1) } }
+@keyframes cpulse { 50% { opacity: .45 } }
+@keyframes cbounce { 0%, 80%, 100% { transform: translateY(0); opacity: .4 } 40% { transform: translateY(-4px); opacity: 1 } }
+@keyframes cglow { 50% { box-shadow: 0 10px 40px rgba(0, 0, 0, .5), 0 0 30px rgba(251, 191, 36, .55) } }
+
+@media (max-width: 640px) {
+  .chat-panel { top: 0; bottom: 0; width: 100vw; border-radius: 0; }
+  .landing { padding-bottom: 3vh; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-panel, .chat-backdrop, .rchip, .typing i, .pdot, .chat-pill.urgent { animation: none !important; }
+}
+.landing { padding-bottom: 4vh; }
+.landing-card {
+  width: min(540px, 100%);
+  padding: 16px 18px 14px;
+  background: rgba(7, 11, 20, .5);
+}
+.landing-card h2 { font-size: 18px; margin-bottom: 4px; }
+.landing-card p { font-size: 13px; line-height: 1.5; margin-bottom: 12px; }
+.landing-card .chips2 { margin-top: 10px; }

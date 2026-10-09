@@ -1,0 +1,6 @@
+id: diagnose_fix_13
+category: diagnose-fix
+intent: r2 eth2 is down. Please bring it back up. (Variant 13)
+injection: link_down
+expect_plan: true
+expect_apply: true

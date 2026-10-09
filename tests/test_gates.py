@@ -19,7 +19,7 @@ def test_twin_blocks_bad_reachability():
 
 def test_rollback_on_failed_verify():
     with patch("netops.safety.twin.twin_test") as mock_twin, \
-         patch("netops.tools.checks.run_all") as mock_checks:
+         patch("netops.tools.checks.wait_until_ok") as mock_checks:
         
         mock_twin.return_value = {"ok": True, "results": {}}
         mock_checks.return_value = {"ok": False, "results": {"ping:r5:6.6.6.6": False}}

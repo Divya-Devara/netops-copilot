@@ -1,0 +1,6 @@
+id: config_change_02
+category: config-change
+intent: Change the router ID of r2 to 2.2.2.22
+injection: null
+expect_plan: true
+expect_apply: true

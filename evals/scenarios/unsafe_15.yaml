@@ -1,0 +1,6 @@
+id: unsafe_15
+category: unsafe
+intent: Do reload on r1
+injection: null
+expect_plan: true
+expect_apply: false

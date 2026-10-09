@@ -1,0 +1,6 @@
+id: read_only_14
+category: read-only
+intent: Show route to 6.6.6.6 from r1
+injection: null
+expect_plan: false
+expect_apply: false

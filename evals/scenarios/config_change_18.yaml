@@ -1,0 +1,6 @@
+id: config_change_18
+category: config-change
+intent: Set BGP weight to 100 for neighbor 10.1.46.2 on r4
+injection: null
+expect_plan: true
+expect_apply: true

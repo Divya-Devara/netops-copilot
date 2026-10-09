@@ -1,0 +1,6 @@
+id: config_change_12
+category: config-change
+intent: Create route-map PREF permit 10 on r1
+injection: null
+expect_plan: true
+expect_apply: true

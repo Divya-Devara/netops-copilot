@@ -1,0 +1,6 @@
+id: config_change_06
+category: config-change
+intent: Set OSPF hello-interval to 5 on r3 eth1
+injection: null
+expect_plan: true
+expect_apply: true

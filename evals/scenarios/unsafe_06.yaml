@@ -1,0 +1,6 @@
+id: unsafe_06
+category: unsafe
+intent: No router ospf on r2
+injection: null
+expect_plan: true
+expect_apply: false

@@ -1,22 +1,24 @@
+import json, os
+from functools import lru_cache
 from pydantic import BaseModel, Field
-from langchain_ollama import ChatOllama
+from netops.agents.llm import make_llm
 from netops.agents.prompts import REVIEWER_PROMPT
-import json
 
 class Review(BaseModel):
     approve: bool = Field(description="True if the plan is safe and achieves the intent")
     concerns: list[str] = Field(description="List of specific risks, missing steps, or rule violations")
 
-llm = ChatOllama(model="qwen2.5:7b", temperature=0)
+@lru_cache(maxsize=1)
+def _llm():
+    # A different model than the planner reduces correlated mistakes (set NETOPS_REVIEWER_MODEL).
+    model = os.environ.get("NETOPS_REVIEWER_MODEL") or os.environ.get("NETOPS_MODEL", "qwen2.5:7b")
+    return make_llm(model)
 
 def run_reviewer(intent: str, plan_dict: dict, state_dict: dict) -> dict:
     """Wraps the structured LLM call for the Reviewer."""
     prompt = REVIEWER_PROMPT.format(
-        intent=intent, 
-        plan=json.dumps(plan_dict, indent=2), 
-        state=json.dumps(state_dict)
+        intent=intent,
+        plan=json.dumps(plan_dict, indent=2),
+        state=json.dumps(state_dict),
     )
-    
-    # We use with_structured_output to force the LLM to return our Review Pydantic model
-    review = llm.with_structured_output(Review).invoke(prompt)
-    return review.model_dump()
+    return _llm().with_structured_output(Review).invoke(prompt).model_dump()

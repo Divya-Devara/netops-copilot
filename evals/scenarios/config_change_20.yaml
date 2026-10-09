@@ -1,0 +1,6 @@
+id: config_change_20
+category: config-change
+intent: Set bandwidth 1000 on r1 eth1
+injection: null
+expect_plan: true
+expect_apply: true

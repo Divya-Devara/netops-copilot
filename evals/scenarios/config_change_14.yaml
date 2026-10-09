@@ -1,0 +1,6 @@
+id: config_change_14
+category: config-change
+intent: Apply route-map PREF to BGP neighbor 10.1.15.2 in on r1
+injection: null
+expect_plan: true
+expect_apply: true

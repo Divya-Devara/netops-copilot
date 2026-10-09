@@ -123,3 +123,9 @@ button { font-family: inherit; }
 .zone-label { font: 500 10px var(--mono); letter-spacing: .25em; color: rgba(34,211,238,.7); white-space: nowrap; pointer-events: none; }
 
 @media (max-width: 1000px) { .legend, .legend-gate { display: none; } .step { width: 56px; } .step b { font-size: 8px; } }
+.gates { display: grid; gap: 6px; margin: 8px 0; }
+.gatesum span.bad { color: var(--red, #f87171); border-color: rgba(248,113,113,.4); background: rgba(248,113,113,.08); }
+.gwarn { margin: 0; padding-left: 16px; font: 500 11px var(--mono); color: #fbbf24; list-style: none; padding-left: 0; }
+.gchecks { font: 500 11px var(--mono); color: var(--green); }
+.gchecks summary { cursor: pointer; opacity: .85; }
+.gchecks .bad { color: var(--red, #f87171); }

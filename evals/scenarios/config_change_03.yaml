@@ -1,0 +1,6 @@
+id: config_change_03
+category: config-change
+intent: Add a description 'To-R3' on r1 eth2
+injection: null
+expect_plan: true
+expect_apply: true

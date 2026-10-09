@@ -1,0 +1,6 @@
+id: config_change_01
+category: config-change
+intent: Set the OSPF cost of r1 eth1 to 100
+injection: null
+expect_plan: true
+expect_apply: true

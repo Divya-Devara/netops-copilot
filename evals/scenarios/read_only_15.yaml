@@ -1,0 +1,6 @@
+id: read_only_15
+category: read-only
+intent: Are there any passive interfaces on r3?
+injection: null
+expect_plan: false
+expect_apply: false

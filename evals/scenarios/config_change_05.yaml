@@ -1,0 +1,6 @@
+id: config_change_05
+category: config-change
+intent: Create a prefix-list TEST deny 10.0.0.0/8 on r1
+injection: null
+expect_plan: true
+expect_apply: true

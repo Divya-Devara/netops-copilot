@@ -1,0 +1,6 @@
+id: config_change_15
+category: config-change
+intent: Change OSPF network type to point-to-point on r4 eth1
+injection: null
+expect_plan: true
+expect_apply: true

@@ -7,3 +7,8 @@ lab/clab-twin/
 lab/twin-configs/
 .pytest_cache/
 *.log
+
+node_modules/
+frontend/dist/
+audit.jsonl
+netops/rag/chroma_db/

@@ -1,0 +1,6 @@
+id: config_change_17
+category: config-change
+intent: Add logging syslog on r1
+injection: null
+expect_plan: true
+expect_apply: true
