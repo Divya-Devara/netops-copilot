@@ -1,0 +1,32 @@
+/* Colour themes. Every colour in index.css / chat.css / controls.css comes from these tokens.
+   The 3D scene reads the matching palette from theme.js. Switch with <html data-theme="...">. */
+:root, :root[data-theme='aurora'] {
+  --bg: #05070d; --glass: rgba(12, 18, 32, 0.6); --stroke: rgba(120, 160, 255, 0.16);
+  --text: #e6edf7; --soft: #a9c4dd; --muted: #7d8aa3; --ink: #04121a;
+  --accent: #22d3ee; --accent2: #a78bfa; --green: #34d399; --amber: #fbbf24; --red: #f87171;
+  --accent-rgb: 34, 211, 238; --accent2-rgb: 167, 139, 250; --green-rgb: 52, 211, 153; --amber-rgb: 251, 191, 36; --red-rgb: 248, 113, 113;
+  --panel-rgb: 7, 11, 20; --inset-rgb: 2, 6, 14; --scrim-rgb: 3, 5, 10; --line-rgb: 125, 211, 252; --shadow-rgb: 0, 0, 0;
+  --muted-rgb: 148, 163, 184; --cyan: var(--accent); --violet: var(--accent2); --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --dim: #5d6b86; --track: #1f2a44; --track-dot: #1a2440;
+  color-scheme: dark;
+}
+:root[data-theme='amber'] {
+  --bg: #0a0806; --glass: rgba(24, 17, 9, 0.62); --stroke: rgba(251, 191, 36, 0.2);
+  --text: #f6eee0; --soft: #dcc9a6; --muted: #a08a68; --ink: #1a1204;
+  --accent: #fbbf24; --accent2: #fb7185; --green: #a3e635; --amber: #fb923c; --red: #ef4444;
+  --accent-rgb: 251, 191, 36; --accent2-rgb: 251, 113, 133; --green-rgb: 163, 230, 53; --amber-rgb: 251, 146, 60; --red-rgb: 239, 68, 68;
+  --panel-rgb: 16, 11, 6; --inset-rgb: 8, 5, 2; --scrim-rgb: 6, 4, 2; --line-rgb: 251, 191, 36; --shadow-rgb: 0, 0, 0;
+  --muted-rgb: 160, 138, 104; --cyan: var(--accent); --violet: var(--accent2); --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --dim: #7a6a50; --track: #3a2c18; --track-dot: #2a1f10;
+  color-scheme: dark;
+}
+:root[data-theme='light'] {
+  --bg: #e9eef7; --glass: rgba(255, 255, 255, 0.74); --stroke: rgba(37, 99, 235, 0.18);
+  --text: #0f172a; --soft: #334155; --muted: #64748b; --ink: #ffffff;
+  --accent: #2563eb; --accent2: #7c3aed; --green: #059669; --amber: #d97706; --red: #dc2626;
+  --accent-rgb: 37, 99, 235; --accent2-rgb: 124, 58, 237; --green-rgb: 5, 150, 105; --amber-rgb: 217, 119, 6; --red-rgb: 220, 38, 38;
+  --panel-rgb: 255, 255, 255; --inset-rgb: 241, 245, 249; --scrim-rgb: 226, 232, 240; --line-rgb: 37, 99, 235; --shadow-rgb: 30, 41, 59;
+  --muted-rgb: 100, 116, 139; --cyan: var(--accent); --violet: var(--accent2); --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --dim: #94a3b8; --track: #cbd5e1; --track-dot: #e2e8f0;
+  color-scheme: light;
+}

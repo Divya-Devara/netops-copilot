@@ -2,10 +2,12 @@ import { useEffect, useRef } from 'react'
 import GateDetails from './GateDetails'
 
 export const SUGGESTIONS = [
-  'Show OSPF neighbors on r1',
-  'Why can r5 not reach r6?',
+  'What is wrong with the network right now?',
+  'Why is the OSPF adjacency between r1 and r2 down?',
+  'What happens if r2 goes down?',
+  'Ping 6.6.6.6 from r5',
+  'How does OSPF DR election work?',
   'Set OSPF cost on r1 eth1 to 100',
-  'policy: test blocking',
 ]
 
 const clock = (ts) => (ts ? new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')
@@ -52,7 +54,7 @@ export function LandingHero({ intent, setIntent, onSubmit, phase, connected }) {
 }
 
 /* ───────── Message pieces ───────── */
-function RunCard({ steps, pipeline }) {
+function RunCard({ steps, pipeline, tools = [] }) {
   const items = pipeline.filter((p) => steps[p.id])
   if (!items.length) return <div className="cmsg run"><div className="run-card"><span className="rchip running">Starting…</span></div></div>
   return (
@@ -64,6 +66,13 @@ function RunCard({ steps, pipeline }) {
           </span>
         ))}
       </div>
+      {tools.length > 0 && (
+        <div className="run-tools">
+          {tools.map((t, i) => (
+            <span key={i} className={`t ${t.done ? (t.ok === false ? 'bad' : 'done') : ''}`}>{t.tool}({Object.values(t.args || {}).join(', ')})</span>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -107,12 +116,24 @@ function ApprovalCard({ m }) {
 }
 
 function Message({ m, pipeline }) {
-  if (m.role === 'run') return <RunCard steps={m.steps || {}} pipeline={pipeline} />
+  if (m.role === 'run') return <RunCard steps={m.steps || {}} pipeline={pipeline} tools={m.tools || []} />
   if (m.role === 'approval') return <ApprovalCard m={m} />
   if (m.role === 'system') return <div className="cmsg system">{m.text}</div>
   return (
     <div className={`cmsg ${m.role} ${m.tone || ''}`}>
       <div className="bubble">{m.text}</div>
+      {m.evidence?.length > 0 && (
+        <details className="evidence">
+          <summary>Evidence: {m.evidence.length} tool call{m.evidence.length > 1 ? 's' : ''}</summary>
+          {m.evidence.map((e, i) => (
+            <div key={i} className="ev-item">
+              <b>{e.tool}({Object.values(e.args || {}).join(', ')})</b>
+              <pre>{e.output}</pre>
+            </div>
+          ))}
+          {m.citations?.length > 0 && <div className="ev-cites">Verified sources:{m.citations.map((c) => <span key={c}>{c}</span>)}</div>}
+        </details>
+      )}
       <time>{clock(m.ts)}</time>
     </div>
   )
