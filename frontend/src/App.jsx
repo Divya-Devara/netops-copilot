@@ -5,21 +5,29 @@ import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing'
 import * as THREE from 'three'
 import './index.css'
 import './chat.css'
+import './controls.css'
 import { LandingHero, ChatPanel, ChatPill } from './ChatUI'
 import GateDetails from './GateDetails'
+import ControlPanel, { ThemeSwitcher } from './ControlPanel'
+import { THEMES, ThemeContext, useTheme, loadTheme, saveTheme } from './theme'
 
 /* ═════════ 1. DATA ═════════ */
 const ROUTERS = {
-  r1: { pos: [-2.5, 0, -2.5], as: 65001, lo: '1.1.1.1', role: 'Core', color: '#38bdf8' },
-  r2: { pos: [2.5, 0, -2.5],  as: 65001, lo: '2.2.2.2', role: 'Core', color: '#38bdf8' },
-  r3: { pos: [-2.5, 0, 2.5],  as: 65001, lo: '3.3.3.3', role: 'Core', color: '#38bdf8' },
-  r4: { pos: [2.5, 0, 2.5],   as: 65001, lo: '4.4.4.4', role: 'Core', color: '#38bdf8' },
-  r5: { pos: [-6.5, 0, -2.5], as: 65002, lo: '5.5.5.5', role: 'External', color: '#a78bfa' },
-  r6: { pos: [6.5, 0, 2.5],   as: 65003, lo: '6.6.6.6', role: 'External', color: '#fbbf24' },
+  r1: { pos: [-2.5, 0, -2.5], as: 65001, lo: '1.1.1.1', role: 'Core' },
+  r2: { pos: [2.5, 0, -2.5],  as: 65001, lo: '2.2.2.2', role: 'Core' },
+  r3: { pos: [-2.5, 0, 2.5],  as: 65001, lo: '3.3.3.3', role: 'Core' },
+  r4: { pos: [2.5, 0, 2.5],   as: 65001, lo: '4.4.4.4', role: 'Core' },
+  r5: { pos: [-6.5, 0, -2.5], as: 65002, lo: '5.5.5.5', role: 'External' },
+  r6: { pos: [6.5, 0, 2.5],   as: 65003, lo: '6.6.6.6', role: 'External' },
 }
-const LINKS = [['r1','r2','ospf'],['r1','r3','ospf'],['r2','r4','ospf'],['r3','r4','ospf'],['r1','r5','bgp'],['r4','r6','bgp']]
-const LINK_COLOR = { ospf: '#22d3ee', bgp: '#34d399' }
-const STATUS = { scan: '#22d3ee', plan: '#a78bfa', twin: '#e879f9', apply: '#fbbf24', verify: '#34d399', fail: '#f87171' }
+const LINKS = [['r1','r2','ospf','10.0.12.0/30'],['r1','r3','ospf','10.0.13.0/30'],['r2','r4','ospf','10.0.24.0/30'],['r3','r4','ospf','10.0.34.0/30'],['r1','r5','bgp','10.1.15.0/30'],['r4','r6','bgp','10.1.46.0/30']]
+const routerColor = (id, T) => (ROUTERS[id].role === 'Core' ? T.core : id === 'r5' ? T.extA : T.extB)
+const STATUS_TEXT = { scan: 'Scanning…', plan: 'Planning…', twin: 'Testing in twin…', apply: 'Applying change…', verify: 'Verifying…', fail: 'Problem found' }
+const ZONES = [
+  { label: 'YOUR NETWORK · AS 65001 · OSPF area 0', tone: 'ospf', c: [0, 0], size: [8.2, 8.2] },
+  { label: 'EXTERNAL · AS 65002', tone: 'extA', c: [-6.5, -2.5], size: [2.6, 2.6] },
+  { label: 'EXTERNAL · AS 65003', tone: 'extB', c: [6.5, 2.5], size: [2.6, 2.6] },
+]
 const FLOOR = -1.7
 const PIPELINE = [
   { id: 'classify', label: 'Classify' }, { id: 'diagnose', label: 'Diagnose' }, { id: 'plan', label: 'Plan' },
@@ -28,20 +36,58 @@ const PIPELINE = [
 ]
 
 /* ═════════ 2. 3D ═════════ */
-function RouterNode({ id, status, note, selected, onSelect }) {
-  const r = ROUTERS[id]
-  const color = STATUS[status] || r.color
-  const busy = !!status
-  const rings = [useRef(), useRef()], core = useRef(), halo = useRef()
-  const [hover, setHover] = useState(false)
+/* The universal "router" glyph: a disc with four arrows pointing outward */
+function RouterSymbol({ color, busy }) {
+  const g = useRef()
+  useFrame((_, dt) => { g.current.rotation.y += dt * (busy ? 1.6 : 0.4) })
+  const mat = <meshBasicMaterial color={color} toneMapped={false} />
+  return (
+    <group ref={g}>
+      <mesh><cylinderGeometry args={[0.2, 0.2, 0.07, 32]} />{mat}</mesh>
+      {[0, 1, 2, 3].map((i) => (
+        <group key={i} rotation-y={(i * Math.PI) / 2}>
+          <mesh position={[0.42, 0, 0]} rotation-z={-Math.PI / 2}><coneGeometry args={[0.1, 0.22, 12]} />{mat}</mesh>
+          <mesh position={[0.3, 0, 0]} rotation-z={-Math.PI / 2}><cylinderGeometry args={[0.025, 0.025, 0.2, 8]} />{mat}</mesh>
+        </group>
+      ))}
+    </group>
+  )
+}
 
-  useFrame(({ clock }, dt) => {
-    const t = clock.elapsedTime, sp = busy ? 2.4 : 0.5
-    rings[0].current.rotation.x += dt * sp;       rings[0].current.rotation.y += dt * sp * 0.6
-    rings[1].current.rotation.z -= dt * sp * 0.8; rings[1].current.rotation.y += dt * sp * 0.3
-    core.current.scale.setScalar((busy ? 1 + Math.sin(t * 7) * 0.18 : 1) * (hover || selected ? 1.2 : 1))
-    core.current.rotation.y += dt * 0.8
-    halo.current.material.opacity = busy ? 0.25 + Math.sin(t * 7) * 0.12 : 0.1
+/* External AS: a wireframe globe (lat/long rings) = "the internet / another provider" */
+function ExternalGlobe({ color, busy }) {
+  const g = useRef()
+  useFrame((_, dt) => { g.current.rotation.y += dt * (busy ? 1.4 : 0.35) })
+  return (
+    <group ref={g}>
+      <mesh><sphereGeometry args={[0.36, 18, 12]} /><meshBasicMaterial color={color} wireframe transparent opacity={0.55} toneMapped={false} /></mesh>
+      <mesh><sphereGeometry args={[0.2, 16, 16]} /><meshBasicMaterial color={color} transparent opacity={0.35} toneMapped={false} /></mesh>
+      <mesh rotation-x={Math.PI / 2}><torusGeometry args={[0.5, 0.012, 8, 64]} /><meshBasicMaterial color={color} toneMapped={false} /></mesh>
+    </group>
+  )
+}
+
+function RouterNode({ id, status, health, note, selected, onSelect }) {
+  const T = useTheme()
+  const r = ROUTERS[id]
+  const external = r.role === 'External'
+  const own = routerColor(id, T)
+  const unhealthy = !status && health && health !== 'ok'
+  const color = T.status[status] || (unhealthy ? (health === 'down' ? T.bad : T.warn) : own)
+  const busy = !!status
+  const leds = useRef([]), pad = useRef(), body = useRef()
+  const [hover, setHover] = useState(false)
+  const PORTS = 8
+
+  useFrame(({ clock }) => {
+    const t = clock.elapsedTime
+    // port LEDs: each blinks on its own phase, much faster while the agent is working on this router
+    leds.current.forEach((m, i) => {
+      const f = busy ? 9 : 1.6
+      m.material.opacity = 0.25 + 0.75 * Math.max(0, Math.sin(t * f + i * 1.9) ** 3)
+    })
+    pad.current.material.opacity = selected || busy ? 0.55 + Math.sin(t * 5) * 0.25 * busy : 0.35
+    body.current.scale.setScalar(hover || selected ? 1.05 : 1)
   })
 
   return (
@@ -49,31 +95,57 @@ function RouterNode({ id, status, note, selected, onSelect }) {
       onPointerOver={(e) => { e.stopPropagation(); setHover(true); document.body.style.cursor = 'pointer' }}
       onPointerOut={() => { setHover(false); document.body.style.cursor = 'auto' }}
       onClick={(e) => { e.stopPropagation(); onSelect(id) }}>
-      <Float speed={1.6} floatIntensity={0.5} rotationIntensity={0} floatingRange={[-0.08, 0.12]}>
-        <RoundedBox args={[1.5, 0.26, 1.5]} radius={0.06} smoothness={4}>
-          <meshStandardMaterial color="#0b1220" metalness={0.9} roughness={0.25} />
-          <Edges color={color} threshold={15} />
-        </RoundedBox>
-        {[-0.45, -0.15, 0.15, 0.45].map((x) => (
-          <mesh key={x} position={[x, 0.14, 0.72]}><boxGeometry args={[0.12, 0.04, 0.02]} /><meshBasicMaterial color={color} toneMapped={false} /></mesh>
-        ))}
-        <group position={[0, 0.85, 0]}>
-          <mesh ref={core}><icosahedronGeometry args={[0.32, 1]} /><meshBasicMaterial color={color} wireframe toneMapped={false} /></mesh>
-          <mesh><octahedronGeometry args={[0.14]} /><meshBasicMaterial color="#ffffff" toneMapped={false} /></mesh>
-          <mesh ref={halo}><sphereGeometry args={[0.55, 24, 24]} /><meshBasicMaterial color={color} transparent opacity={0.1} depthWrite={false} toneMapped={false} /></mesh>
-          <mesh ref={rings[0]}><torusGeometry args={[0.62, 0.012, 8, 64]} /><meshBasicMaterial color={color} toneMapped={false} /></mesh>
-          <mesh ref={rings[1]}><torusGeometry args={[0.8, 0.008, 8, 64]} /><meshBasicMaterial color={color} transparent opacity={0.6} toneMapped={false} /></mesh>
+      <Float speed={1.4} floatIntensity={0.3} rotationIntensity={0} floatingRange={[-0.05, 0.08]}>
+        <group ref={body}>
+          {/* chassis: a 1U network appliance with a lit front panel */}
+          <RoundedBox args={[1.9, 0.38, 1.1]} radius={0.05} smoothness={4}>
+            <meshStandardMaterial color={T.chassis} metalness={T.dark ? 0.85 : 0.35} roughness={0.3} />
+            <Edges color={color} threshold={15} />
+          </RoundedBox>
+          {/* vent slats on top */}
+          {[-0.3, -0.1, 0.1, 0.3].map((z) => (
+            <mesh key={z} position={[-0.45, 0.195, z]}><boxGeometry args={[0.7, 0.008, 0.05]} /><meshBasicMaterial color={T.vent} /></mesh>
+          ))}
+          {/* power/status LED + port row on the front face */}
+          <mesh position={[-0.8, 0.0, 0.555]}><circleGeometry args={[0.045, 16]} /><meshBasicMaterial color={color} toneMapped={false} /></mesh>
+          {Array.from({ length: PORTS }, (_, i) => {
+            const x = -0.5 + i * 0.22
+            return (
+              <group key={i} position={[x, -0.02, 0.555]}>
+                <mesh><planeGeometry args={[0.15, 0.13]} /><meshBasicMaterial color={T.dark ? "#050810" : "#1e293b"} /></mesh>
+                <mesh ref={(m) => (leds.current[i] = m)} position={[0, 0.105, 0]}>
+                  <planeGeometry args={[0.07, 0.03]} /><meshBasicMaterial color={color} transparent toneMapped={false} />
+                </mesh>
+              </group>
+            )
+          })}
+          {/* hologram above the box: router symbol (core) or globe (other AS) */}
+          <group position={[0, 1.0, 0]}>
+            {external ? <ExternalGlobe color={color} busy={busy} /> : <RouterSymbol color={color} busy={busy} />}
+          </group>
         </group>
       </Float>
-      <mesh position={[0, FLOOR / 2, 0]}><cylinderGeometry args={[0.02, 0.02, -FLOOR, 8]} /><meshBasicMaterial color={color} transparent opacity={0.35} toneMapped={false} /></mesh>
-      <mesh position={[0, FLOOR + 0.01, 0]} rotation-x={-Math.PI / 2}>
-        <ringGeometry args={[0.9, 1.0, 48]} /><meshBasicMaterial color={color} transparent opacity={selected || busy ? 0.9 : 0.45} toneMapped={false} />
+      {/* support pole + floor pad */}
+      <mesh position={[0, FLOOR / 2, 0]}><cylinderGeometry args={[0.02, 0.02, -FLOOR, 8]} /><meshBasicMaterial color={color} transparent opacity={0.3} toneMapped={false} /></mesh>
+      <mesh ref={pad} position={[0, FLOOR + 0.01, 0]} rotation-x={-Math.PI / 2}>
+        <ringGeometry args={[1.05, 1.15, 4, 1, Math.PI / 4]} /><meshBasicMaterial color={color} transparent opacity={0.4} toneMapped={false} />
       </mesh>
-      <Html position={[0, -0.75, 0]} center distanceFactor={10} zIndexRange={[5, 0]}>
-        <div className="node-label" style={{ borderColor: selected ? color : undefined }}><b style={{ color }}>{id}</b><span>AS {r.as}</span></div>
+      <Html position={[0, -0.85, 0]} center distanceFactor={10} zIndexRange={[5, 0]}>
+        <div className="node-label" style={{ borderColor: selected ? color : undefined }}>
+          <b style={{ color }}>{id.toUpperCase()}</b>
+          <em>{external ? 'External router' : 'Core router'}</em>
+          <span className="astag" style={{ color: own, borderColor: own }}>AS {r.as}</span>
+          <span className="ip">lo {r.lo}</span>
+        </div>
+      </Html>
+      <Html position={[0, 1.9, 0]} center distanceFactor={10} zIndexRange={[6, 0]}>
+        <div className={`state-badge ${busy ? (status === 'fail' ? 'bad' : 'busy') : unhealthy ? 'bad' : 'ok'}`}
+          style={busy || unhealthy ? { color, borderColor: color } : undefined}>
+          {busy ? STATUS_TEXT[status] : unhealthy ? (health === 'down' ? 'Unreachable' : 'Problem detected') : 'Healthy'}
+        </div>
       </Html>
       {note && (
-        <Html position={[0, 2.3, 0]} center distanceFactor={10} zIndexRange={[8, 0]}>
+        <Html position={[0, 2.7, 0]} center distanceFactor={10} zIndexRange={[8, 0]}>
           <div className="callout" style={{ color, borderColor: color, boxShadow: `0 0 24px ${color}55` }}>{note}</div>
         </Html>
       )}
@@ -81,21 +153,29 @@ function RouterNode({ id, status, note, selected, onSelect }) {
   )
 }
 
-function Link({ a, b, kind, active }) {
+function Link({ a, b, kind, subnet, active, broken }) {
+  const T = useTheme()
   const pa = useMemo(() => new THREE.Vector3(...ROUTERS[a].pos), [a])
   const pb = useMemo(() => new THREE.Vector3(...ROUTERS[b].pos), [b])
-  const dots = useRef([]), color = LINK_COLOR[kind]
+  const dots = useRef([]), color = broken ? T.bad : T[kind]
   useFrame(({ clock }) => dots.current.forEach((m, i) => {
+    m.visible = !broken                      // a broken link carries no traffic
     m.position.lerpVectors(pa, pb, (clock.elapsedTime * (active ? 0.7 : 0.18) + i / 3) % 1)
     m.scale.setScalar(active ? 1.6 : 1)
   }))
   const pts = [pa, pb]
   return (
     <group>
-      <Line points={pts} color={color} lineWidth={7} transparent opacity={active ? 0.3 : 0.1} toneMapped={false} />
-      <Line points={pts} color={color} lineWidth={1.6} transparent opacity={0.9} toneMapped={false} dashed={kind === 'bgp'} dashSize={0.25} gapSize={0.15} />
+      <Line points={pts} color={color} lineWidth={7} transparent opacity={broken ? 0.3 : active ? 0.3 : 0.1} toneMapped={false} />
+      <Line points={pts} color={color} lineWidth={1.6} transparent opacity={0.9} toneMapped={false} dashed={kind === 'bgp' || broken} dashSize={0.25} gapSize={0.15} />
+      <Html position={pa.clone().lerp(pb, 0.5).toArray()} center distanceFactor={10} zIndexRange={[4, 0]}>
+        <div className="link-label" style={{ color, borderColor: color }}>
+          {kind === 'bgp' ? 'eBGP' : 'OSPF'}{broken ? ' · DOWN' : ''}
+          <small>{subnet}</small>
+        </div>
+      </Html>
       {[0, 1, 2].map((i) => (
-        <mesh key={i} ref={(m) => (dots.current[i] = m)}><sphereGeometry args={[0.055, 10, 10]} /><meshBasicMaterial color="#ffffff" toneMapped={false} /></mesh>
+        <mesh key={i} ref={(m) => (dots.current[i] = m)}><sphereGeometry args={[0.055, 10, 10]} /><meshBasicMaterial color={T.dot} toneMapped={false} /></mesh>
       ))}
     </group>
   )
@@ -115,41 +195,51 @@ function CameraRig({ focus, lift = 0 }) {
   return null
 }
 
-function Topology({ status, notes, selected, onSelect }) {
+function Topology({ status, health, notes, selected, onSelect }) {
+  const T = useTheme()
   return (
     <group>
-      <mesh position={[0, FLOOR + 0.005, 0]} rotation-x={-Math.PI / 2}>
-        <planeGeometry args={[6.4, 6.4]} /><meshBasicMaterial color="#22d3ee" transparent opacity={0.045} depthWrite={false} />
-      </mesh>
-      <Html position={[0, FLOOR, 3.7]} center><div className="zone-label">OSPF AREA 0 · AS 65001</div></Html>
-      {LINKS.map(([a, b, k]) => <Link key={a + b} a={a} b={b} kind={k} active={!!status[a] && !!status[b]} />)}
+      {ZONES.map((z) => (
+        <group key={z.label} position={[z.c[0], FLOOR + 0.005, z.c[1]]}>
+          <mesh rotation-x={-Math.PI / 2}><planeGeometry args={z.size} /><meshBasicMaterial color={T[z.tone]} transparent opacity={0.07} depthWrite={false} /></mesh>
+          <Line points={[[-z.size[0] / 2, 0.01, -z.size[1] / 2], [z.size[0] / 2, 0.01, -z.size[1] / 2], [z.size[0] / 2, 0.01, z.size[1] / 2], [-z.size[0] / 2, 0.01, z.size[1] / 2], [-z.size[0] / 2, 0.01, -z.size[1] / 2]]}
+            color={T[z.tone]} lineWidth={1.2} transparent opacity={0.45} dashed dashSize={0.3} gapSize={0.2} toneMapped={false} />
+          <Html position={[0, 0, z.size[1] / 2 + 0.35]} center><div className="zone-label" style={{ color: T[z.tone] }}>{z.label}</div></Html>
+        </group>
+      ))}
+      {LINKS.map(([a, b, k, sub]) => <Link key={a + b} a={a} b={b} kind={k} subnet={sub} active={!!status[a] && !!status[b]} broken={health?.links?.[a + '-' + b] === 'down'} />)}
       {Object.keys(ROUTERS).map((id) => (
-        <RouterNode key={id} id={id} status={status[id]} note={notes[id]} selected={selected === id} onSelect={onSelect} />
+        <RouterNode key={id} id={id} status={status[id]} health={health?.routers?.[id]} note={notes[id]} selected={selected === id} onSelect={onSelect} />
       ))}
     </group>
   )
 }
 
-function Scene({ status, notes, focus, selected, onSelect, lift }) {
+function Scene({ status, health, notes, focus, selected, onSelect, lift, theme: T }) {
   return (
     <Canvas camera={{ position: [0, 7.5, 13.5], fov: 45 }} dpr={[1, 2]} onPointerMissed={() => onSelect(null)}>
-      <color attach="background" args={['#05070d']} />
-      <fog attach="fog" args={['#05070d', 16, 40]} />
-      <ambientLight intensity={0.5} />
-      <pointLight position={[0, 6, 0]} intensity={40} color="#7dd3fc" />
-      <pointLight position={[-8, 3, 6]} intensity={25} color="#a78bfa" />
-      <Stars radius={60} depth={40} count={2500} factor={3} fade speed={0.6} />
-      <Sparkles count={90} scale={[20, 7, 14]} position={[0, 1, 0]} size={2.2} speed={0.35} color="#7dd3fc" opacity={0.6} />
-      <Grid position={[0, FLOOR, 0]} args={[40, 40]} cellSize={1} cellThickness={0.6} cellColor="#16335a"
-        sectionSize={5} sectionThickness={1.2} sectionColor="#2b7bb9" fadeDistance={30} fadeStrength={1.6} infiniteGrid />
-      <Topology status={status} notes={notes} selected={selected} onSelect={onSelect} />
-      <EffectComposer multisampling={0}>
-        <Bloom mipmapBlur intensity={1.25} luminanceThreshold={0.25} luminanceSmoothing={0.2} />
-        <Vignette eskil={false} offset={0.2} darkness={0.85} />
-      </EffectComposer>
-      <OrbitControls makeDefault enableDamping dampingFactor={0.06} autoRotate autoRotateSpeed={0.35}
-        minDistance={6} maxDistance={26} maxPolarAngle={Math.PI / 2.15} />
-      <CameraRig focus={focus} lift={lift} />
+      {/* r3f has its own React root, so the theme must be re-provided inside the Canvas */}
+      <ThemeContext.Provider value={T}>
+        <color attach="background" args={[T.bg]} />
+        <fog attach="fog" args={[T.bg, 16, 40]} />
+        <ambientLight intensity={T.ambient} />
+        <pointLight position={[0, 6, 0]} intensity={40} color={T.light1} />
+        <pointLight position={[-8, 3, 6]} intensity={25} color={T.light2} />
+        {T.stars && <Stars radius={60} depth={40} count={2500} factor={3} fade speed={0.6} />}
+        <Sparkles count={T.dark ? 90 : 40} scale={[20, 7, 14]} position={[0, 1, 0]} size={2.2} speed={0.35} color={T.sparkle} opacity={T.dark ? 0.6 : 0.35} />
+        <Grid position={[0, FLOOR, 0]} args={[40, 40]} cellSize={1} cellThickness={0.6} cellColor={T.gridCell}
+          sectionSize={5} sectionThickness={1.2} sectionColor={T.gridSection} fadeDistance={30} fadeStrength={1.6} infiniteGrid />
+        <Topology status={status} health={health} notes={notes} selected={selected} onSelect={onSelect} />
+        {T.bloom > 0 && (
+          <EffectComposer multisampling={0}>
+            <Bloom mipmapBlur intensity={T.bloom} luminanceThreshold={0.25} luminanceSmoothing={0.2} />
+            <Vignette eskil={false} offset={0.2} darkness={0.85} />
+          </EffectComposer>
+        )}
+        <OrbitControls makeDefault enableDamping dampingFactor={0.06} autoRotate autoRotateSpeed={0.35}
+          minDistance={6} maxDistance={26} maxPolarAngle={Math.PI / 2.15} />
+        <CameraRig focus={focus} lift={lift} />
+      </ThemeContext.Provider>
     </Canvas>
   )
 }
@@ -196,6 +286,9 @@ function ApprovalModal({ approval, onDecide }) {
 }
 
 /* ═════════ 4. FASTAPI + WEBSOCKET INTEGRATION ═════════ */
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws'
+export const API_URL = import.meta.env.VITE_API_URL || WS_URL.replace(/^ws/, 'http').replace(/\/ws$/, '')
+
 function useNetops(onMessage) {
   const [connected, setConnected] = useState(false)
   const ws = useRef(null)
@@ -207,8 +300,7 @@ function useNetops(onMessage) {
     let timeout
     let closed = false
     const connect = () => {
-      const url = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws'
-      ws.current = new WebSocket(url)
+      ws.current = new WebSocket(WS_URL)
       ws.current.onopen = () => setConnected(true)
       ws.current.onclose = () => {
         setConnected(false)
@@ -279,6 +371,14 @@ export default function App() {
   const [selected, setSelected] = useState(null)
   const [toast, setToast] = useState(null)
   const [unread, setUnread] = useState(0)
+  const [themeId, setThemeId] = useState(loadTheme)
+  const [health, setHealth] = useState(null)               // live lab health pushed by the backend monitor
+  const [alerts, setAlerts] = useState([])                 // recent monitor events (newest first)
+  const [dismissed, setDismissed] = useState('')           // issue-set the user already acknowledged
+  const [panel, setPanel] = useState(false)                // lab control panel
+  const T = THEMES[themeId]
+
+  useEffect(() => { document.documentElement.dataset.theme = themeId; saveTheme(themeId) }, [themeId])
 
   useEffect(() => {
     try { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ threadId, bootId, msgs, view })) } catch { /* quota */ }
@@ -306,16 +406,20 @@ export default function App() {
     if (idx < 0) return ms
     return ms.map((m, i) => (i === idx ? { ...m, steps: fn(m.steps || {}) } : m))
   })
+  const updateRunTools = (fn) => setMsgs((ms) => {
+    const idx = ms.findLastIndex((m) => m.role === 'run')
+    return idx < 0 ? ms : ms.map((m, i) => (i === idx ? { ...m, tools: fn(m.tools || []) } : m))
+  })
   const S = (id, s) => setPipe((p) => ({ ...p, [id]: s }))
   const setRouters = (ids, mode) => setStatus(Object.fromEntries(ids.map((id) => [id, mode])))
   const note = (router, text) => setNotes(router ? { [router]: text } : {})
 
-  const finish = (tone, text) => {
+  const finish = (tone, text, extra = {}) => {
   // If the answer was streamed token by token, finalize that bubble instead of adding a duplicate
   setMsgs((ms) => {
     const last = ms[ms.length - 1]
-    if (last && last.role === 'agent' && last.streaming) return [...ms.slice(0, -1), { ...last, text, tone, streaming: false }]
-    return [...ms, { id: uid(), ts: Date.now(), role: 'agent', text, tone }]
+    if (last && last.role === 'agent' && last.streaming) return [...ms.slice(0, -1), { ...last, text, tone, streaming: false, ...extra }]
+    return [...ms, { id: uid(), ts: Date.now(), role: 'agent', text, tone, ...extra }]
   })
   if (view === 'minimized') { setToast({ tone, text }); setUnread((u) => u + 1) }
 
@@ -346,6 +450,19 @@ export default function App() {
         return [...ms, { id: uid(), ts: Date.now(), role: 'agent', tone: 'info', streaming: true, text: msg.text }]
       })
     }
+    else if (msg.type === 'health') {
+      setHealth({ routers: msg.routers, links: msg.links, issues: msg.issues, healthy: msg.healthy })
+      const ev = [...(msg.appeared || []).map((t) => ({ kind: 'bad', text: t })), ...(msg.cleared || []).map((t) => ({ kind: 'good', text: t }))]
+      if (ev.length) setAlerts((a) => [...ev.map((e) => ({ ...e, ts: msg.ts * 1000 })), ...a].slice(0, 30))
+    }
+    else if (msg.type === 'tool') {
+      // the agent is running a command: light up the router it targets and log the step in the run card
+      if (msg.router) { setRouters([msg.router], 'scan'); note(msg.router, `${msg.tool} ${Object.values(msg.args || {}).filter((v) => v !== msg.router).join(' ')}`.trim()); setFocus(msg.router) }
+      updateRunTools((tools) => [...tools, { tool: msg.tool, args: msg.args, done: false }])
+    }
+    else if (msg.type === 'tool_result') {
+      updateRunTools((tools) => { const i = tools.findLastIndex((t) => !t.done); return tools.map((t, k) => (k === i ? { ...t, done: true, ok: msg.ok } : t)) })
+    }
     else if (msg.type === 'stage') {
       S(msg.node, msg.status)
       updateRun((steps) => ({ ...steps, [msg.node]: msg.status }))
@@ -364,7 +481,7 @@ export default function App() {
     }
     else if (msg.type === 'final') {
       const toneMap = { applied: 'good', blocked: 'bad', rolled_back: 'bad', error: 'bad', rejected: 'info', answer: 'info' }
-      finish(toneMap[msg.outcome] || 'info', msg.text)
+      finish(toneMap[msg.outcome] || 'info', msg.text, { evidence: msg.evidence, citations: msg.citations })
     }
   }
 
@@ -408,17 +525,35 @@ export default function App() {
 
   return (
   <div className="stage">
-    <Scene status={status} notes={notes} focus={focus} selected={selected} onSelect={setSelected} lift={view === 'landing' ? 2.4 : 0.6} />
+    <Scene status={status} health={health} notes={notes} focus={focus} selected={selected} onSelect={setSelected} lift={view === 'landing' ? 2.4 : 0.6} theme={T} />
 
       <div className="hud-title">
         <h1><span>NetOps</span> Copilot</h1>
         <p>
-          <i className="live-dot" style={{ background: connected ? '#34d399' : '#f87171', boxShadow: connected ? '0 0 10px #34d399' : 'none' }} />
+          <i className="live-dot" style={{ background: connected ? 'var(--green)' : 'var(--red)', boxShadow: connected ? '0 0 10px var(--green)' : 'none' }} />
           {connected ? 'Live network twin · 6 nodes' : 'Backend Disconnected...'}
         </p>
       </div>
 
       <PipelineStrip pipe={pipe} />
+
+      <div className="topright">
+        <ThemeSwitcher themeId={themeId} onChange={setThemeId} />
+        <button className={`lab-btn glass ${health && !health.healthy ? 'warn' : ''}`} onClick={() => setPanel((p) => !p)}>
+          <span className="lab-dot" />Lab control{health && health.issues.length > 0 ? <em>{health.issues.length}</em> : null}
+        </button>
+      </div>
+      <ControlPanel open={panel} onClose={() => setPanel(false)} health={health} alerts={alerts} apiUrl={API_URL}
+        onAsk={(q) => { setPanel(false); submit(q) }} busy={phase !== 'idle'} />
+
+      {health && !health.healthy && dismissed !== health.issues.join('|') && phase === 'idle' && view !== 'chat' && (
+        <div className="alert-banner glass">
+          <b>⚠ {health.issues.length} problem{health.issues.length > 1 ? 's' : ''} detected</b>
+          <span>{health.issues[0]}{health.issues.length > 1 ? ` (+${health.issues.length - 1} more)` : ''}</span>
+          <button onClick={() => submit('What is wrong with the network right now? Explain the root cause of each problem.')}>Investigate</button>
+          <button className="x" aria-label="Dismiss" onClick={() => setDismissed(health.issues.join('|'))}>✕</button>
+        </div>
+      )}
 
       {toast && view === 'minimized' && (
         <div className={`toast glass ${toast.tone}`} style={{ whiteSpace: 'pre-wrap' }}>{toast.text}</div>
@@ -426,17 +561,23 @@ export default function App() {
 
       {info && (
         <div className="inspector glass">
-          <h3 style={{ color: info.color }}>{selected}</h3>
-          <dl><dt>Role</dt><dd>{info.role}</dd><dt>AS</dt><dd>{info.as}</dd><dt>Loopback</dt><dd>{info.lo}</dd><dt>State</dt><dd>{status[selected] || 'idle'}</dd></dl>
+          <h3 style={{ color: routerColor(selected, T) }}>{selected}</h3>
+          <dl><dt>Role</dt><dd>{info.role}</dd><dt>AS</dt><dd>{info.as}</dd><dt>Loopback</dt><dd>{info.lo}</dd><dt>State</dt><dd>{status[selected] || health?.routers?.[selected] || 'idle'}</dd></dl>
           <button className="ask-btn" onClick={() => { setIntent(`What is the current state of ${selected}?`); openChat() }}>
             Ask about {selected}
           </button>
         </div>
       )}
 
-      <div className="legend">
-        <span className="chip"><i style={{ background: '#22d3ee' }} />OSPF link</span>
-        <span className="chip"><i style={{ background: '#34d399' }} />eBGP peering</span>
+      <div className="legend glass">
+        <h4>How to read this</h4>
+        <div className="lg"><svg width="26" height="18" viewBox="0 0 26 18"><circle cx="13" cy="9" r="4" fill={T.core} /><path d="M13 1v3M13 14v3M3 9h3M20 9h3" stroke={T.core} strokeWidth="2" /></svg><span><b>Router symbol</b> core router (AS 65001)</span></div>
+        <div className="lg"><svg width="26" height="18" viewBox="0 0 26 18"><circle cx="13" cy="9" r="7" fill="none" stroke={T.extA} strokeWidth="1.5" /><ellipse cx="13" cy="9" rx="3" ry="7" fill="none" stroke={T.extA} /></svg><span><b>Globe</b> external network / ISP</span></div>
+        <div className="lg"><svg width="26" height="18"><line x1="1" y1="9" x2="25" y2="9" stroke={T.ospf} strokeWidth="2" /></svg><span><b>Solid line</b> OSPF, inside your network</span></div>
+        <div className="lg"><svg width="26" height="18"><line x1="1" y1="9" x2="25" y2="9" stroke={T.bgp} strokeWidth="2" strokeDasharray="5 3" /></svg><span><b>Dashed line</b> eBGP, to an external AS</span></div>
+        <div className="lg"><svg width="26" height="18"><line x1="1" y1="9" x2="25" y2="9" stroke={T.bad} strokeWidth="2" strokeDasharray="3 3" /></svg><span><b>Red dashed</b> link or session is down</span></div>
+        <div className="lg"><svg width="26" height="18"><circle cx="13" cy="9" r="3" fill={T.dot} /></svg><span><b>Moving dots</b> routing updates / traffic</span></div>
+        <div className="lg"><svg width="26" height="18"><circle cx="13" cy="9" r="5" fill={T.warn} /></svg><span><b>Colour badge</b> agent activity or a problem</span></div>
       </div>
 
       {view === 'landing' && (
