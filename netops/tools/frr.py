@@ -148,3 +148,22 @@ def config_matches_snapshot(router: str, snapshot_path: str, prefix: str = PREFI
     with open(snapshot_path) as f:
         saved = normalize_config(f.read())
     return normalize_config(running_config(router, prefix=prefix)) == saved
+
+# ───────────── read-only diagnostics beyond `show` (used by the Q&A agent) ─────────────
+
+def _strict_ip(value: str) -> str:
+    try:
+        return str(ipaddress.ip_address(value.strip()))
+    except ValueError:
+        raise ToolError(f"'{value}' is not a plain IP address")
+
+def ping(router: str, dst: str, count: int = 3, prefix: str = PREFIX) -> str:
+    dst = _strict_ip(dst)
+    try:
+        return _exec(router, ["ping", "-c", str(max(1, min(count, 5))), "-W", "1", dst], timeout=20, prefix=prefix)
+    except ToolError as e:
+        return f"ping failed: {e}"        # 100% loss is an answer, not an error
+
+def traceroute(router: str, dst: str, prefix: str = PREFIX) -> str:
+    dst = _strict_ip(dst)
+    return _exec(router, ["traceroute", "-n", "-q", "1", "-w", "1", "-m", "10", dst], timeout=30, prefix=prefix)
